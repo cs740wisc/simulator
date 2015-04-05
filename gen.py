@@ -1,12 +1,11 @@
 import sys, json, argparse, copy, signal, time, os
 sys.path.append('/home/mininet/simulator/')
 
-import libTK as libTK
 from libTK import out, logPrefix, timeint
 from libTK.utils import tkutils as tkutil
-from libTK.comm.sender import TKSenderReconnect
 from libTK import *
 from libTK import settings
+from libTK import comm
 
 
 import socket, threading, SocketServer
@@ -18,7 +17,6 @@ class TKGenData:
         self.ip = ip
         self.port = port
         self.time = time
-        self.sock = None
         self.run = True
 
 
@@ -31,27 +29,15 @@ class TKGenData:
         while (self.run):
             time.sleep(self.time)
             # Sleep then start a thread to send data
-            msg_thread = threading.Thread(target=self.send_message)
+            msg_thread = threading.Thread(target=self.gen_message)
             msg_thread.start()
-           
  
 
-    def send_message(self):
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.sock.connect((self.ip, self.port))
-            # Generate a random messsage, then send to server
-            message = "test1"
-            out.info("Sending message to server: %s\n" % message)
-            m_str = json2str(message)
-            self.sock.sendall(m_str)
-            response = str2json(self.sock.recv(1024))
-            out.info("Client Received: %s\n" % response)
-        except Exception as e:
-            out.info("Error: %s\n" % e)
-        # Only get here once we want to stop
-        self.sock.close()
+    def gen_message(self):
+
+
+        msg = {"msgType": "request", "data": "test1"}
+        comm.send_msg((self.ip, self.port), msg)
 
 def setupArgParse():
     p = argparse.ArgumentParser(description='Daemon for ParaDrop Framework Control Configuration server')
