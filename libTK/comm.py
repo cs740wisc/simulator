@@ -19,4 +19,3 @@ def send_msg(addr, msg):
         out.err("send_msg error: %s\n" % e)
 
 
-

@@ -16,7 +16,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
         data = str2json(self.request.recv(1024))
 
         # Pass off to coord object so it can check for violations
-        self.server.coord.receivedData(data) 
+        self.server.coord.receivedData(self.request, data) 
 
         
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):

@@ -13,7 +13,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
     def handle(self):
         data = str2json(self.request.recv(1024))
 
-        self.server.node_coord.receivedData(data)
+        self.server.node_coord.receivedData(self.request, data)
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
@@ -24,7 +24,6 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         self.node_coord = node_coord
         SocketServer.TCPServer.__init__(self, server_address, handler_class)
         
-
 
 
 def setupArgParse():
