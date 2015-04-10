@@ -1,4 +1,4 @@
-
+import json, yaml
 from libTK import *
 import threading, socket
 from libTK import comm
@@ -11,7 +11,7 @@ class Coordinator():
 
     """
 
-    def __init__(self, numNodes, k):
+    def __init__(self, k, nodeport):
         """ Receives number of nodes.
             Looks up based on hostname to find all ip addresses
             Stores hostname 
@@ -19,23 +19,32 @@ class Coordinator():
         """
 
         out.info("Instantiating coordinator class.\n")
-       
-        self.k = k
-        self.nodes = {}
+     
 
-        # Generate IPs to contact
-        for i in range(1,numNodes+1):
-            host = "h%s" % i
-            ip = "10.0.0.%s" % 2*i
-            self.nodes[host] = {"ip": ip, "vals": {}, "waiting": True}
+        self.dataLock = threading.Lock() 
+
+        # READ FILE to get hostnames, ips 
+        self.dataLock.acquire()     
+        self.nodes = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
+
+        
+        print self.nodes
+        self.nodeport = nodeport
+        self.k = k
 
         # Start process to get initial top k values, this will be used to set thresholds at each node
         # Responses must be handled asynchronously
         out.info("Sending requests for all data to each node for initial top-k computation.\n")
         for hn, node in self.nodes.iteritems():
+            node['vals'] = {}
+            node['waiting'] = True
+            
             msg = {"msgType": settings.MSG_GET_OBJECT_COUNTS, "hn": hn}
-            comm.send_msg((node['ip'], 10000), msg)
+            comm.send_msg((node['ip'], self.nodeport), msg)
+        
+        self.dataLock.release()     
 
+        print(self.nodes)
 
     def receivedData(self, requestSock, data):
         """ 
@@ -62,6 +71,7 @@ class Coordinator():
             # Simply send to the coordinator
             self.getVals(hn, requestSock)
 
+    
 
     def initObjectCountResponse(self, hn, data):
         """
@@ -69,13 +79,16 @@ class Coordinator():
             Check if all nodes have sent their response. 
             If so, initialize aggregation of all
         """
-        
+        self.dataLock.acquire()     
         self.nodes[hn]['vals'] = data
         self.nodes[hn]['waiting'] = False
 
 
+        print(self.nodes)
+        
         for hn, node in self.nodes.iteritems():
-            if (node['waiting']):
+            if (hn.startswith('h') and node['waiting']):
+                self.dataLock.release()     
                 return
 
         # If we get here, all nodes have received their data
@@ -96,4 +109,5 @@ class Coordinator():
 
 
         print totalVals
+        self.dataLock.release()     
         

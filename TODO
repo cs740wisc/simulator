@@ -4,15 +4,11 @@
 General
 
     - add locks to all multithreaded server structs
-
+        - improve these
     - implement everything in 
         https://github.com/mininet/mininet/wiki/Introduction-to-Mininet#why
 
 #############################################
-Node
-    - figure out how to get hostname
-
-
 
 #############################################
 Coordinator
@@ -21,11 +17,5 @@ Coordinator
 
 
 
-
-#############################################
-Experimentation
-
-    - figure out how to start processes on each node
-
-    - figure out how to address each node properly
-
+ 
+- screens don't close when mininet dies

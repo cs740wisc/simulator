@@ -40,10 +40,10 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 
 def setupArgParse():
     p = argparse.ArgumentParser(description='Daemon for ParaDrop Framework Control Configuration server')
-    p.add_argument('-p', '--port', help='Port to listen on', type=int, default=11000)
-    p.add_argument('-i', '--host', help='Host to listen on', type=str, default='localhost')
-    p.add_argument('-n', '--numnodes', help='Number of nodes collecting data', type=int, default=1)
+    p.add_argument('-p', '--masterport', help='Port to listen on', type=int, default=11000)
+    p.add_argument('-i', '--masterip', help='Host to listen on', type=str, default='localhost')
     p.add_argument('-k', '--topk', help='K objects to get', type=int, default=1)
+    p.add_argument('-d', '--nodeport', help='Port to send to nodes', type=int, default=10000)
     return p
 
 
@@ -52,13 +52,13 @@ if (__name__ == "__main__"):
     p = setupArgParse()
     args = p.parse_args()
     
-    out.info('-- %s Starting master node: port: %s ipaddr: %s\n' % (logPrefix(), args.port, args.host))
+    out.info('-- %s Starting master node: port: %s ipaddr: %s\n' % (logPrefix(), args.masterport, args.masterip))
     # Port 0 means to select an arbitrary unused port
 
     # Get current top-k queries
-    coord = coordinator.Coordinator(args.numnodes, args.topk)
+    coord = coordinator.Coordinator(args.topk, args.nodeport)
     
-    server = ThreadedTCPServer((args.host, args.port), ThreadedTCPRequestHandler, coord)
+    server = ThreadedTCPServer((args.masterip, args.masterport), ThreadedTCPRequestHandler, coord)
     ip, port = server.server_address
 
 

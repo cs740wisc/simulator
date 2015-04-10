@@ -5,6 +5,7 @@ first implementation of simulator
 SETUP:
     -need a mininet VM
     -sudo apt-get install screen
+    -sudo apt-get install python-yaml
     
     -ssh with x forwarding to open up xterm
     
