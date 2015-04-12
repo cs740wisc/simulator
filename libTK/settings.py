@@ -10,6 +10,7 @@ import os, re, sys
 
 #messages 
 MSG_REQUEST_DATA = 'request'
+MSG_SET_NODE_PARAMETERS = 'setNodeParams'
 MSG_GET_OBJECT_COUNTS = 'getCounts'
 MSG_GET_OBJECT_COUNTS_RESPONSE = 'getCountsResponse'
 

@@ -31,13 +31,6 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
         SocketServer.TCPServer.__init__(self, server_address, handler_class)
 
 
-
-
-
-
-
-
-
 def setupArgParse():
     p = argparse.ArgumentParser(description='Daemon for ParaDrop Framework Control Configuration server')
     p.add_argument('-p', '--masterport', help='Port to listen on', type=int, default=11000)

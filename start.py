@@ -29,55 +29,86 @@ class SingleSwitchTopo(Topo):
             self.addLink(gen, sw)
             self.addLink(host, sw)
 
+def saveNodesToFile(net, numnodes):
+    cstr = 'c0'
+    c = net.get(cstr)
+    ips = {}
+    ips['coords'] = {}
+    ips['coords'][cstr] = {}
+    ips['coords'][cstr]['ip'] = c.IP() 
+    
+    ips['nodes'] = {}
+    ips['gens'] = {}
+    # GET ALL ips of hosts for coordinator to read
+    for i in range(numnodes):
+        h = 'h%s' % (i + 1)
+        ips['nodes'][h] = {}
+        ips['nodes'][h]['ip'] = net.get(h).IP() 
+        g = 'g%s' % (i + 1)
+        ips['gens'][g] = {}
+        ips['gens'][g]['ip'] = net.get(g).IP() 
+    
+    print ips    
+    # Save all ips to file, so each program can access them 
+    json.dump(ips, open(settings.FILE_SIMULATION_IPS, 'w'))
+    return ips
+
+
+
+def startScreens(net, numnodes, ips, nodeport, masterport, topk):
+    # Start the screens on each machine
+    for i in range(numnodes):
+
+        # START THE NODES
+        hn = 'h%s' % (i + 1)
+        h = net.get(hn) 
+        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/node.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport)
+        print(runCmd)
+        h.cmd(runCmd)
+
+        # START THE GENERATORS
+        gn = 'g%s' % (i + 1)
+        g = net.get(gn) 
+        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/gen.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport)
+        print(runCmd)
+        g.cmd(runCmd)
+
+
+
+    cstr = 'c0'
+    c = net.get(cstr)
+    # Start the coordinator machine
+    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/master.py --masterport %s --masterip %s --topk %s --nodeport %s' % (masterport, ips['coords']['c0']['ip'], topk, nodeport)
+    print(runCmd)
+    c.cmd(runCmd)
+
+def stopScreens(net, numnodes):
+    # Start the screens on each machine
+    killCmd = 'pkill -15 screen'
+
+    for i in range(numnodes):
+        hn = 'h%s' % (i + 1)
+        h = net.get(hn) 
+        h.cmd(killCmd)
+
+    cstr = 'c0'
+    c = net.get(cstr)
+    # Start the coordinator machine
+    c.cmd(killCmd)
+
 def simpleTest(topk, nodes, nodeport, masterport):
     "Create and test a simple network"
     topo = SingleSwitchTopo(nodes)
     net = Mininet(topo)
     net.start()
 
-    ips = {}
+    ips = saveNodesToFile(net, nodes)
 
-    cstr = 'c0'
-    c = net.get(cstr)
-    ips[cstr] = {}
-    ips[cstr]['ip'] = c.IP() 
-    
-    # GET ALL ips of hosts for coordinator to read
-    for i in range(nodes):
-        h = 'h%s' % (i + 1)
-        ips[h] = {}
-        ips[h]['ip'] = net.get(h).IP() 
-        g = 'g%s' % (i + 1)
-        ips[g] = {}
-        ips[g]['ip'] = net.get(g).IP() 
-    
-    print ips    
-    # Save all ips to file, so each program can access them 
-    json.dump(ips, open(settings.FILE_SIMULATION_IPS, 'w'))
-
-
-    # Start the screens on each machine
-    for i in range(nodes):
-        hn = 'h%s' % (i + 1)
-        h = net.get(hn) 
-        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/node.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s' % (hn, hn, nodeport, ips[hn]['ip'], ips['c0']['ip'], masterport)
-        print(runCmd)
-        h.cmd(runCmd)
-
-
-    # Start the coordinator machine
-    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/master.py --masterport %s --masterip %s --topk %s --nodeport %s' % (masterport, ips['c0']['ip'], topk, nodeport)
-    print(runCmd)
-    c.cmd(runCmd)
-
-    # START THE HOSTS
-    #{screen} SCREEN -h 2000 -dmS pdfcd python /etc/pd/pdfcd/pdfcd.py 
+    startScreens(net, nodes, ips, nodeport, masterport, topk)
  
     CLI(net)
 
-   
-     
- 
+    stopScreens(net, nodes)
 
     net.stop()
 

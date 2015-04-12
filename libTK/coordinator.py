@@ -25,13 +25,17 @@ class Coordinator():
 
         # READ FILE to get hostnames, ips 
         self.dataLock.acquire()     
-        self.nodes = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
+        self.ips = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
 
+        self.nodes = self.ips['nodes']
         
         print self.nodes
         self.nodeport = nodeport
         self.k = k
 
+        # TODO: change to input from program
+        self.epsilon = 0
+        
         # Start process to get initial top k values, this will be used to set thresholds at each node
         # Responses must be handled asynchronously
         out.info("Sending requests for all data to each node for initial top-k computation.\n")
@@ -83,31 +87,36 @@ class Coordinator():
         self.nodes[hn]['vals'] = data
         self.nodes[hn]['waiting'] = False
 
+        nodes = copy.deepcopy(self.nodes)
+        self.dataLock.release()
 
-        print(self.nodes)
-        
-        for hn, node in self.nodes.iteritems():
-            if (hn.startswith('h') and node['waiting']):
-                self.dataLock.release()     
+        for hn, node in nodes.iteritems():
+            if (node['waiting']):
                 return
 
         # If we get here, all nodes have received their data
-        self.aggregateInitTopK()
+        aggregated = self.aggregateInitTopK(nodes)
+        
+        sortedVals = self.sortVals(aggregated)
 
 
-    def aggregateInitTopK(self):
+    def aggregateInitTopK(self, nodes):
         totalVals = {}
 
-
-        for hn, node in self.nodes.iteritems():
-            print(node)
+        for hn, node in nodes.iteritems():
             for key, val in node['vals'].iteritems():
                 if key in totalVals:
                     totalVals[key] += val
                 else:
                     totalVals[key] = val
 
+        return totalVals
+    
+    def sortVals(self, vals):
+        """ 
+            Expects a dictionary of d[key] = value
+            Returns a sorted array of (key, value) tuples
+        """
 
-        print totalVals
-        self.dataLock.release()     
-        
+        sortedVals = sorted(vals.items(), key=operator.itemgetter(1), reverse=True)
+
