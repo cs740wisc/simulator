@@ -21,7 +21,6 @@ class NodeCoordinator():
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
 
-
         self.valLock.acquire()
         self.vals = {}
         self.valLock.release()
@@ -29,6 +28,8 @@ class NodeCoordinator():
         self.paramLock.acquire()
         self.params = {}
         self.paramLock.release()
+        
+        self.borderVal = 0
         
         self.master_address = master_address
 
@@ -95,7 +96,9 @@ class NodeCoordinator():
 
     def checkParams(self, valsCopy):
         """
-            Go through vals/
+            Go through vals, determine if any were violated.
+            If so, call send violated to send all violated constraints to coordinator.
+
         """
 
         
