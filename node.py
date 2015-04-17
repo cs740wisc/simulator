@@ -20,7 +20,6 @@ class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
 
     def __init__(self, server_address, handler_class, node_coord, master_address):
         self.allow_reuse_address = True
-        self.numRequests = 0
         self.node_coord = node_coord
         SocketServer.TCPServer.__init__(self, server_address, handler_class)
         

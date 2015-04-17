@@ -64,14 +64,14 @@ def startScreens(net, numnodes, ips, nodeport, masterport, topk):
         h = net.get(hn) 
         runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/node.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport)
         print(runCmd)
-        h.cmd(runCmd)
+        #h.cmd(runCmd)
 
         # START THE GENERATORS
         gn = 'g%s' % (i + 1)
         g = net.get(gn) 
         runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/gen.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport)
         print(runCmd)
-        g.cmd(runCmd)
+        #g.cmd(runCmd)
 
 
 
@@ -80,7 +80,7 @@ def startScreens(net, numnodes, ips, nodeport, masterport, topk):
     # Start the coordinator machine
     runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/master.py --masterport %s --masterip %s --topk %s --nodeport %s' % (masterport, ips['coords']['c0']['ip'], topk, nodeport)
     print(runCmd)
-    c.cmd(runCmd)
+    #c.cmd(runCmd)
 
 def stopScreens(net, numnodes):
     # Start the screens on each machine

@@ -1,7 +1,7 @@
 from libTK import *
 import threading, socket
 from libTK import comm
-        from libTK import settings
+from libTK import settings
 import copy
 
 
@@ -21,16 +21,17 @@ class NodeCoordinator():
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
 
+
+        self.topk = []
         self.valLock.acquire()
-        self.vals = {}
+        self.node = {}
+        self.node['border'] = 12.0
+        self.node['partials'] = {}
+        self.node['partials']['a'] = {'val': 15.0, 'param': 0.0}
+        self.node['partials']['b'] = {'val': 12.0, 'param': 0.0}
+        self.node['partials']['c'] = {'val': 9.0, 'param': 0.0}
         self.valLock.release()
 
-        self.paramLock.acquire()
-        self.params = {}
-        self.paramLock.release()
-        
-        self.borderVal = 0
-        
         self.master_address = master_address
 
 
@@ -47,7 +48,7 @@ class NodeCoordinator():
         if   (msgType == settings.MSG_REQUEST_DATA):
             # From generator, request for a specific node should increment value by 1.
             obj = data['object']
-            self.addRequestToVals(obj)
+            self.addRequest(obj)
         elif (msgType == settings.MSG_GET_OBJECT_COUNTS):
             # Request to get all current values at this node
             # Simply send to the coordinator
@@ -64,13 +65,14 @@ class NodeCoordinator():
     def getAllPartialVals(self, hn, srcIP):
 
         self.valLock.acquire()
-        valsCopy = copy.deepcopy(self.vals)
+        nodeCopy = copy.deepcopy(self.node)
         self.valLock.release()
-
+        
         addr = (srcIP, settings.RECV_PORT)
-        msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': valsCopy, 'hn': hn}
+        msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodeCopy, 'hn': hn}
 
         comm.send_msg(addr, msg) 
+
 
     def getSomePartialVals(self, hn, srcIP, whichVals):
 
@@ -83,27 +85,63 @@ class NodeCoordinator():
 
         comm.send_msg(addr, msg) 
 
-    def addRequestToVals(self, obj):
 
+
+    def addRequest(self, obj):
+        """
+            Currently increments the single object by 1 on each request.
+            This can be extended for more detailed value counts, like the 15 minutes sliding window mentioned in the paper.
+        """
         self.valLock.acquire()
-    
-        if (obj in self.vals):
-            self.vals['obj'] += 1
+        if (obj in self.node['partials']):
+            self.node['partials'][obj]['val'] += 1.0
         else:
-            self.vals['obj'] = 1
-        
+            # New object, set the adjustment parameter to 0
+            self.node['partials'][obj] = {'val': 1.0, 'param': 0.0}
+
         self.valLock.release()    
 
-    def checkParams(self, valsCopy):
+        self.checkParams()
+
+
+    def checkParams(self):
         """
             Go through vals, determine if any were violated.
             If so, call send violated to send all violated constraints to coordinator.
-
+            
         """
+        # TODO - this is really slow, we could incrementally keep track of everything but for now this is easier to build
+        self.valLock.acquire()
+        partialCopy = copy.deepcopy(self.partials)        
+        self.valLock.release()    
 
-        
-    def setParams(self, params):
+        # Loop through the topk nodes, get the lowest value  
+        # Loop through each object and check against others
+               
+        # To coordinator, send a message containing: all members in resolution set, and special border values 
 
-        
-        pass
 
+
+    def setParams(self, data):
+        """
+            Receives a message containing:
+            data = {
+                        'topk': [objA, objB, ...]
+                        'params': {
+                                     'objA': adjA
+                                     'objB': adjB
+                                  }
+                    }
+            Sets the topk set and adjustment parameters which will be monitored 
+        """
+        self.topk = data['topk']
+        # Set up all the new parameters
+        self.valLock.acquire()
+      
+        for obj, adjFactor in data['params'].iteritems():
+            if obj in self.partials:
+                self.partials[obj]['param'] = adjFactor
+            else:
+                self.partials[obj] = {'val': 0, 'param': adjFactor}
+
+        self.valLock.release() 

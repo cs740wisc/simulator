@@ -4,6 +4,8 @@ import threading, socket
 from libTK import comm
 from libTK import settings
 import time
+import copy
+import operator
 
 
 class Coordinator():
@@ -22,13 +24,8 @@ class Coordinator():
 
         out.info("Instantiating coordinator class.\n")
      
-
-        self.dataLock = threading.Lock() 
-
         # READ FILE to get hostnames, ips 
         self.ips = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
-
-
 
         self.nodes = self.ips['nodes']
         
@@ -36,17 +33,17 @@ class Coordinator():
         self.k = k
 
         self.topk = []
-
+        self.F_coord = 0.5
         # TODO: change to input from program
         self.epsilon = 0
 
+        self.dataLock = threading.Lock()
 
+        # Original thread needs to stay open to listen as server
         # Contacts all nodes, performs resolution, sets up initial parameters       
-        self.getInitialVals()
-
-
+        performInit_thread = threading.Thread(target=self.performInitialResolution)
+        performInit_thread.start()
  
-        print(self.nodes)
 
     def receivedData(self, requestSock, data):
         """ 
@@ -73,7 +70,7 @@ class Coordinator():
             # Simply send to the coordinator
             self.getVals(hn, requestSock)
 
-    def getInitialVals(self)
+    def performInitialResolution(self):
             
 
         # TODO add resolution lock, only one resolution can occur at once
@@ -82,12 +79,14 @@ class Coordinator():
         # Start process to get initial top k values, this will be used to set thresholds at each node
         # Responses must be handled asynchronously
         out.info("Sending requests for all data to each node for initial top-k computation.\n")
-        F_node = (1.0 - self.F_coord) / len(self.nodes) 
+        
+        self.F_node = (1.0 - self.F_coord) / len(self.nodes) 
+
+        out.info("F_node: %s.\n" % self.F_node)
         for hn, node in self.nodes.iteritems():
-            node['vals'] = {}
-            node['params'] = {}
+            node['partials'] = {}
             node['border'] = 0
-            node['F'] = F_node
+            node['F'] = self.F_node
 
             node['waiting'] = True
             
@@ -95,106 +94,129 @@ class Coordinator():
             comm.send_msg((node['ip'], self.nodeport), msg)
 
         
+        out.info("Waiting for all responses to arrive.\n")
         # Will wait until all nodes have values
         self.waitForResponses()        
-
+        
+        out.info("Responses arrived, calculating leeway values.\n")
         # 
         self.dataLock.acquire()     
         nodes = copy.deepcopy(self.nodes)
         self.dataLock.release()
 
+        self.calcEverything(nodes)
 
-        leewayVals = calculateLeewayVals(participatingSum, borderSum)
+        #leewayVals = calculateLeewayVals(participatingSum, borderSum)
 
 
-        participatingNodes = self.nodes.keys()
+        #participatingNodes = self.nodes.keys()
 
         # Will assign adjustment factors to nodes, 
-        performReallocation(sortedVals)
-        setTopK(sortVals)
+        #performReallocation(sortedVals)
+        #setTopK(sortVals)
         # All nodes have values, now aggregate them
         
         # TODO add resolution release, only one resolution can occur at once
         
 
-    def getParticipatingCountsAndBorder(self, nodes):
-        participatingSum = {}
-        borderSum = 0
-        aggregateSum = {}
+    def calcEverything(self, nodes):
 
-
-        
-        for hn, node in nodes.iteritems():
-            borderSum += node['border']
-            for key, info in node['partials'].iteritems():
-                if key in participatingSum:
-                    participatingSum[key] += info['val'] + info['param']
-                    aggregateSum[key] += info['val']
-                else:
-                    participatingSum[key] = info['val'] + info['param']
-                    aggregateSum[key] = info['val']
-
-        # TODO add the max of the adjustment params at the coordinator not in resolution set
-        borderSum += 0
-
-
-        ###################################################
-        # SORT TO GET TOP K
-        sortedVals = self.sortVals(aggregateSum)
-        topk = sortedVals[0:self.k]
-        participatingObjects = [a[0] for a in sortedVals]
-        topKObjects = [a[0] for a in topk]
-
-        ####################################################
-        # CALCULATE LEEWAY
-        leeway = {}
-        
-        for o in participatingObjects:
-            # If the object is in the top k set, we need to include epsilon
-            leeway[o] = participatingSum[o] - borderSum[o] + epsilon
-            if (o in topKObjects): 
-                leeway[o] += self.epsilon
-
-
-
-        adjustFactors = {}
-        #####################################################
-        # ASSIGN ADJUSTMENT FACTORS
-        for hn, node in nodes.iteritems():
-            adjustFactors[hn] = {}
-            for o in participatingObjects:
-                adjustFactors[hn][o] = node['border'] - node['partials'][o]['val'] + node['F']*leeway[o]
-
-        
-        #####################################################
-        # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
-        coordAdjFactors = {}
-        for o in participatingObjects:
-            coordAdjFactors[o] = node['border'] - node['partials'][o]['val'] + node['F']*leeway[o]
-            if (o in topKObjects):
-                coordAdjFactors[o] -= epsilon
-                
-
-        
-        # TODO Notify all nodes of the new top k set, their adjustment factors
-
-
-
-
-
-
-    def reallocate(self, topk, resSet, borderVals, partialVals, partialParams, allocParams):
+        try:
+            participatingSum = {}
+            borderSum = 0
+            aggregateSum = {}
     
-        # Calculate leeway
-        leeway = {}
-        
-        # Iterate over all objects
-        for o in resSet:
+    
+            
+            for hn, node in nodes.iteritems():
+                borderSum += node['border']
+                for key, info in node['partials'].iteritems():
+                    if key in participatingSum:
+                        participatingSum[key] += info['val'] + info['param']
+                        aggregateSum[key] += info['val']
+                    else:
+                        participatingSum[key] = info['val'] + info['param']
+                        aggregateSum[key] = info['val']
+    
+            # TODO add the max of the adjustment params at the coordinator not in resolution set
+            borderSum += 0
+    
+    
+            out.info("Participating sum: %s.\n" % participatingSum)
+            out.info("Aggregate sum: %s.\n" % aggregateSum)
+            out.info("Border sum: %s.\n" % borderSum)
+    
+            ###################################################
+            # SORT TO GET TOP K
+            sortedVals = self.sortVals(aggregateSum)
+            topk = sortedVals[0:self.k]
+            participatingObjects = [a[0] for a in sortedVals]
+            topKObjects = [a[0] for a in topk]
+    
+            out.info("sortedVals: %s.\n" % sortedVals)
+            out.info("topk: %s.\n" % topk)
+            out.info("participatingObjects: %s.\n" % participatingObjects)
+            out.info("topKObjects: %s.\n" % topKObjects)
+    
+            ####################################################
+            # CALCULATE LEEWAY
+            leeway = {}
+            
+            for o in participatingObjects:
+                # If the object is in the top k set, we need to include epsilon
+                leeway[o] = participatingSum[o] - borderSum + self.epsilon
+                if (o in topKObjects): 
+                    leeway[o] += self.epsilon
+    
+    
+            out.info("leeway: %s.\n" % leeway)
+    
+            adjustFactors = {}
+            #####################################################
+            # ASSIGN ADJUSTMENT FACTORS
+            for hn, node in nodes.iteritems():
+                adjustFactors[hn] = {}
+                for o in participatingObjects:
+                    out.info("hn: %s. o: %s\n" % (hn, o))
+                    out.info("border: %s.\n" % node['border'])
+                    out.info("val: %s.\n" % node['partials'][o]['val'])
+                    out.info("nodeF: %s.\n" % node['F'])
+                    out.info("leeway: %s.\n" % leeway[o])
+                    adjustFactors[hn][o] = node['border'] - node['partials'][o]['val'] + node['F']*leeway[o]
+                    # TODO - might need to also subtract epsilon from node adjustment factors when object is in topk objects
+                    out.warn("result: %s.\n" % adjustFactors[hn][o])
+                    # Look at Part 2 of Algorithm 3.1 in paper - it is unclear
+           
+            out.info("adjust factors: %s.\n" % adjustFactors)
+    
+            #####################################################
+            # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
+            coordAdjFactors = {}
+            for o in participatingObjects:
+                coordAdjFactors[o] = node['border'] - node['partials'][o]['val'] + node['F']*leeway[o]
+                if (o in topKObjects):
+                    coordAdjFactors[o] -= self.epsilon
+                    
+    
+            out.info("coordAdjFactors: %s.\n" % coordAdjFactors)
+           
+    
+            # TODO this code is wrong somehow, not sure what is going wrong
+
+            ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
+            for hn, node in nodes.iteritems():
+                sendData = {}
+                sendData['topk'] = topKObjects
+                sendData['params'] = adjustFactors[hn]
                 
+                msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
+                comm.send_msg((node['ip'], self.nodeport), msg)
 
-        
-        borderCoord = 0
 
+
+    
+        except Exception as e:
+            out.err('calcEverything Exception: %s\n' % e)    
 
     def waitForResponses(self):
         """
@@ -204,8 +226,9 @@ class Coordinator():
         waiting = False
 
         while (True):
+            waiting = False
             # Iterate through nodes, make sure all have responded
-            for hn, node in nodes.iteritems():
+            for hn, node in self.nodes.iteritems():
                 if (node['waiting']):
                     waiting = True
 
@@ -216,21 +239,19 @@ class Coordinator():
             # Sleep a little so we don't waste cycles        
             time.sleep(0.5)                
 
-
-
-
     def setObjectStats(self, hn, data):
         """
             Updates the initial values at node hn. 
             Check if all nodes have sent their response. 
             If so, initialize aggregation of all
         """
+        # TODO - use a copy of nodes so we can handle a resolution set that isn't everything
+        out.info("Setting object stats for host: %s\n" % hn)
         self.dataLock.acquire()     
-        self.nodes[hn]['vals'] = data
+        self.nodes[hn]['partials'] = data['partials']
+        self.nodes[hn]['border'] = data['border']
         self.nodes[hn]['waiting'] = False
         self.dataLock.release()
-
-
 
     def setTopK(sortVals):
 
@@ -240,16 +261,14 @@ class Coordinator():
         else:
             self.topk = sortVals[0:self.k]
 
-
-
-    def requestCurrentVals(self, objects, nodes)
-    """
-        Requests the current partial values from Nj
-        nodes: Nj, nodes involved in resolution set
-        objects: Oi, objects in resolution
-        
-    """
-    
+    def requestCurrentVals(self, objects, nodes):
+        """
+            Requests the current partial values from Nj
+            nodes: Nj, nodes involved in resolution set
+            objects: Oi, objects in resolution
+            
+        """
+        pass    
     def sortVals(self, vals):
         """ 
             Expects a dictionary of d[key] = value
@@ -257,4 +276,4 @@ class Coordinator():
         """
 
         sortedVals = sorted(vals.items(), key=operator.itemgetter(1), reverse=True)
-
+        return sortedVals
