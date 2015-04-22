@@ -21,7 +21,7 @@ class NodeCoordinator():
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
 
-
+        
         self.topk = []
         self.valLock.acquire()
         self.node = {}
@@ -43,7 +43,6 @@ class NodeCoordinator():
         msgType = data['msgType']
         hn = data['hn']
         srcIP = requestSock.getpeername()[0]
-
 
         if   (msgType == settings.MSG_REQUEST_DATA):
             # From generator, request for a specific node should increment value by 1.
@@ -67,9 +66,21 @@ class NodeCoordinator():
         self.valLock.acquire()
         nodeCopy = copy.deepcopy(self.node)
         self.valLock.release()
-        
+
+        nodecopy = {}
+        if (hn == 'h1'):
+            nodecopy['border'] = 1.0
+            nodecopy['partials'] = {}
+            nodecopy['partials']['a'] = {'val': 9.0, 'param': 0.0}
+            nodecopy['partials']['b'] = {'val': 1.0, 'param': 0.0}
+        else:
+            nodecopy['border'] = 1.0
+            nodecopy['partials'] = {}
+            nodecopy['partials']['a'] = {'val': 1.0, 'param': 0.0}
+            nodecopy['partials']['b'] = {'val': 3.0, 'param': 0.0}
+             
         addr = (srcIP, settings.RECV_PORT)
-        msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodeCopy, 'hn': hn}
+        msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodecopy, 'hn': hn}
 
         comm.send_msg(addr, msg) 
 

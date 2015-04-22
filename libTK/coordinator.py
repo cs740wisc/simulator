@@ -93,7 +93,12 @@ class Coordinator():
             msg = {"msgType": settings.MSG_GET_OBJECT_COUNTS, "hn": hn}
             comm.send_msg((node['ip'], self.nodeport), msg)
 
-        
+        self.coordVals = {}
+        self.coordVals['partials'] = {'a': {'val': 0.0, 'param': 0.0}, 'b': {'val': 0.0, 'param': 0.0}}
+        self.coordVals['border'] = 0.0
+        self.coordVals['F'] = self.F_coord
+       
+ 
         out.info("Waiting for all responses to arrive.\n")
         # Will wait until all nodes have values
         self.waitForResponses()        
@@ -126,8 +131,6 @@ class Coordinator():
             borderSum = 0
             aggregateSum = {}
     
-    
-            
             for hn, node in nodes.iteritems():
                 borderSum += node['border']
                 for key, info in node['partials'].iteritems():
@@ -193,7 +196,7 @@ class Coordinator():
             # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
             coordAdjFactors = {}
             for o in participatingObjects:
-                coordAdjFactors[o] = node['border'] - node['partials'][o]['val'] + node['F']*leeway[o]
+                coordAdjFactors[o] = self.coordVals['border'] - self.coordVals['partials'][o]['val'] + self.coordVals['F']*leeway[o]
                 if (o in topKObjects):
                     coordAdjFactors[o] -= self.epsilon
                     
