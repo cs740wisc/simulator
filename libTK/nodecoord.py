@@ -33,20 +33,28 @@ class NodeCoordinator():
         self.valLock.release()
 
         self.master_address = master_address
+        
+        sendData_thread = threading.Thread(target=self.sendData)
+        sendData_thread.start()
+
+    def sendData(self):
+        """
+
+        """
 
 
     def receivedData(self, requestSock, data):
         """ 
             Listens for data from the coordinator or generator. Handles appropriately.
         """
-        out.info("Node received message: %s\n" % data)
+        #out.info("Node received message: %s\n" % data)
         msgType = data['msgType']
         hn = data['hn']
         srcIP = requestSock.getpeername()[0]
 
         if   (msgType == settings.MSG_REQUEST_DATA):
             # From generator, request for a specific node should increment value by 1.
-            obj = data['object']
+            obj  = data['object']
             self.addRequest(obj)
         elif (msgType == settings.MSG_GET_OBJECT_COUNTS):
             # Request to get all current values at this node
@@ -69,16 +77,26 @@ class NodeCoordinator():
 
         nodecopy = {}
         if (hn == 'h1'):
-            nodecopy['border'] = 1.0
+            nodecopy['border'] = 1.5
             nodecopy['partials'] = {}
-            nodecopy['partials']['a'] = {'val': 9.0, 'param': 0.0}
-            nodecopy['partials']['b'] = {'val': 1.0, 'param': 0.0}
-        else:
-            nodecopy['border'] = 1.0
+            nodecopy['partials']['a'] = {'val': 3.0, 'param': 0.0}
+            nodecopy['partials']['b'] = {'val': 1.5, 'param': 0.0}
+            nodecopy['partials']['c'] = {'val': 2.99, 'param': 0.0}
+        elif (hn == 'h2'):
+            nodecopy['border'] = 1.5
             nodecopy['partials'] = {}
-            nodecopy['partials']['a'] = {'val': 1.0, 'param': 0.0}
+            nodecopy['partials']['a'] = {'val': 3.0, 'param': 0.0}
             nodecopy['partials']['b'] = {'val': 3.0, 'param': 0.0}
-             
+            nodecopy['partials']['c'] = {'val': 1.5, 'param': 0.0}
+        else:           
+            nodecopy['border'] = 2.3
+            nodecopy['partials'] = {}
+            nodecopy['partials']['a'] = {'val': 3.01, 'param': 0.0}
+            nodecopy['partials']['b'] = {'val': 2.3, 'param': 0.0}
+            nodecopy['partials']['c'] = {'val': 2.3, 'param': 0.0}
+
+
+  
         addr = (srcIP, settings.RECV_PORT)
         msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodecopy, 'hn': hn}
 
@@ -98,21 +116,22 @@ class NodeCoordinator():
 
 
 
-    def addRequest(self, obj):
+    def addRequest(self, data):
         """
             Currently increments the single object by 1 on each request.
             This can be extended for more detailed value counts, like the 15 minutes sliding window mentioned in the paper.
         """
         self.valLock.acquire()
-        if (obj in self.node['partials']):
-            self.node['partials'][obj]['val'] += 1.0
-        else:
-            # New object, set the adjustment parameter to 0
-            self.node['partials'][obj] = {'val': 1.0, 'param': 0.0}
+        for obj, val in data.iteritems():
+            if (obj in self.node['partials']):
+                self.node['partials'][obj]['val'] += val
+            else:
+                # New object, set the adjustment parameter to 0
+                self.node['partials'][obj] = {'val': val, 'param': 0.0}
 
         self.valLock.release()    
 
-        self.checkParams()
+        #self.checkParams()
 
 
     def checkParams(self):

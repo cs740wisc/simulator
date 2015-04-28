@@ -6,7 +6,7 @@ from libTK.utils import tkutils as tkutil
 from libTK import *
 from libTK import settings
 from libTK import comm
-from libTK import Generator
+from libTK import generator
 
 import socket, threading, SocketServer
 
@@ -38,6 +38,8 @@ def setupArgParse():
     p.add_argument('-p', '--nodeport', help='Port to send to', type=int, default=10000)
     p.add_argument('-i', '--nodeip', help='IP Address to send to', type=str, default='localhost')
     p.add_argument('-t', '--time', help='How often to send requests', type=int, default=5)
+    p.add_argument('-g', '--genip', help='IP Address to listen on', type=str, default='localhost')
+    p.add_argument('-r', '--genport', help='Port to listen on ', type=int, default=12000)
 
     return p
 
@@ -48,16 +50,11 @@ if (__name__ == "__main__"):
     args = p.parse_args()
     
 
-    out.info('-- %s Starting genData: port: %s ipaddr: %s time: %s\n' % (logPrefix(), args.port, args.ipaddr, args.time))
+    out.info('-- %s Starting genData: port: %s ipaddr: %s time: %s\n' % (logPrefix(), args.nodeport, args.nodeip, args.time))
 
 
     # Set up the thread which will send data to a node
-    tkgen = Generator(args.nodeip, args.nodeport, args.time)
-    gen_thread = threading.Thread(target=tkgen.send_data)
-
-    #gen_thread.daemon = True
-    gen_thread.start()
-    tkgen.start()
+    tkgen = generator.Generator(args.nodeip, args.nodeport, args.time)
 
     # Start a thread which will listen for stop requests
     server = ThreadedTCPServer((args.genip, args.genport), ThreadedTCPRequestHandler, tkgen)
@@ -73,5 +70,4 @@ if (__name__ == "__main__"):
             pass 
     except KeyboardInterrupt:
         server_thread.stop()
-        tkgen.stop()
-        gen_thread.stop()
+        tkgen.stopGen()

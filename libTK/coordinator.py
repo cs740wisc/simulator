@@ -94,7 +94,7 @@ class Coordinator():
             comm.send_msg((node['ip'], self.nodeport), msg)
 
         self.coordVals = {}
-        self.coordVals['partials'] = {'a': {'val': 0.0, 'param': 0.0}, 'b': {'val': 0.0, 'param': 0.0}}
+        self.coordVals['partials'] = {'a': {'val': 0.0, 'param': 0.0}, 'b': {'val': 0.0, 'param': 0.0}, 'c': {'val': 0.0, 'param': 0.0}}
         self.coordVals['border'] = 0.0
         self.coordVals['F'] = self.F_coord
        
