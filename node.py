@@ -62,6 +62,7 @@ if (__name__ == "__main__"):
         while (True):
             pass 
     except KeyboardInterrupt:
+        node_coord.stopGen()
         server.shutdown()
 
     

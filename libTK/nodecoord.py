@@ -2,9 +2,8 @@ from libTK import *
 import threading, socket
 from libTK import comm
 from libTK import settings
-import copy
-
-
+import copy, yaml, time
+from collections import deque
 #TODO
 
 # Store adjustment factors for each object
@@ -31,11 +30,80 @@ class NodeCoordinator():
         self.node['partials']['b'] = {'val': 12.0, 'param': 0.0}
         self.node['partials']['c'] = {'val': 9.0, 'param': 0.0}
         self.valLock.release()
-
+        
+        self.loadData()
         self.master_address = master_address
         
-        sendData_thread = threading.Thread(target=self.sendData)
-        sendData_thread.start()
+        
+        self.sendData_thread = threading.Thread(target=self.sendData)
+        self.sendData_thread.start()
+
+        self.rollingWindow = deque()
+        self.checkWindow_thread = threading.Thread(target=self.checkWindow)
+        self.checkWindow_thread.start()
+
+    def loadData(self):
+        """
+            Opens a file which provides the json specification for test datasets
+            Assumes that each key will default to generating at 1 val per second
+        """
+        self.loadedData = yaml.load(open('genData/h1.txt', 'r'))
+
+        self.data = [[0 for col in range(25)] for row in range(len(self.loadedData))]
+        # Assume 10 seconds if not mentioned
+        self.durations = [10 for row in range(len(self.loadedData))]
+        for i, d in enumerate(self.loadedData):
+            for key, val in d['freqs'].iteritems():
+                self.data[i][ord(key)-ord('a')] = val
+            self.durations[i] = d.get('duration', 10)
+            
+        out.info("Data initialized: %s\n" % self.data)
+        out.info("Durations initialize: %s\n" % self.durations) 
+ 
+        self.dataIndex = 0
+        self.dataTicks = 0
+        self.perSecond = 1
+        self.gen = False
+
+        self.nextDistTicks = self.durations[0]*self.perSecond
+        self.startGen()
+        threading.Timer(1.0/self.perSecond, self.genData).start() 
+
+    def stopGen(self):
+        self.gen = False
+
+    def startGen(self):
+        self.gen = True
+
+    def genData(self):
+        if (self.gen):
+            nextIter = threading.Timer(1.0/self.perSecond, self.genData)
+            nextIter.start() 
+            sendData = {}
+            for i, d in enumerate(self.data[self.dataIndex]):
+                # PWM to send data for each item
+                if (d > 0):
+                    sendData[chr(i+97)]=d
+           
+             
+            self.addRequest(sendData)
+
+            self.dataTicks += 1
+
+            # We must move on the next distribution specified in the file
+            if (self.dataTicks >= self.nextDistTicks):
+                self.dataIndex += 1
+                if (self.dataIndex >= len(self.durations)):
+                    # Exit if there are no durations left specified
+                    out.warn("No more distributions, exiting.\n")
+                    self.run = False
+                    nextIter.cancel()
+                else:
+                    # Otherwise calculate the next time we must switch
+                    self.nextDistTicks = self.dataTicks + self.durations[self.dataIndex] * self.perSecond
+                    out.warn("Switching to the next distribution.\n")
+
+
 
     def sendData(self):
         """
@@ -115,13 +183,35 @@ class NodeCoordinator():
         comm.send_msg(addr, msg) 
 
 
+    def checkWindow(self):
+        while self.gen:
+
+            currtime = time.time()
+            while (len(self.rollingWindow) > 0 and (currtime - self.rollingWindow[0][0] > 15)):
+                t, data = self.rollingWindow.popleft()
+
+                self.valLock.acquire()
+
+                for obj, val in data.iteritems():
+                    self.node['partials'][obj]['val'] -= val
+                
+                self.valLock.release()
+
+
+            print self.node['partials']
+            # Sleep a little so we aren't doing this too often
+            time.sleep(1)
+
 
     def addRequest(self, data):
         """
             Currently increments the single object by 1 on each request.
             This can be extended for more detailed value counts, like the 15 minutes sliding window mentioned in the paper.
         """
+        currtime = time.time() 
+        self.rollingWindow.append((currtime, data))
         self.valLock.acquire()
+        #print("received values: %s" % data)
         for obj, val in data.iteritems():
             if (obj in self.node['partials']):
                 self.node['partials'][obj]['val'] += val
