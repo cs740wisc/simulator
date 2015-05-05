@@ -19,8 +19,7 @@ class NodeCoordinator():
         out.info("Instantiating node coordinator class.\n")
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
-
-        
+      
         self.topk = []
         self.valLock.acquire()
         self.node = {}
@@ -35,6 +34,8 @@ class NodeCoordinator():
         self.rollingWindow = deque()
         self.master_address = master_address
         
+        self.perSecond = 1.0
+        
         self.loadData()
         
         self.sendData_thread = threading.Thread(target=self.genData)
@@ -42,6 +43,10 @@ class NodeCoordinator():
 
         self.checkWindow_thread = threading.Thread(target=self.checkWindow)
         #self.checkWindow_thread.start()
+
+        paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
+        paramsChecker.start() 
+
 
     def loadData(self):
         """
@@ -63,7 +68,6 @@ class NodeCoordinator():
  
         self.dataIndex = 0
         self.dataTicks = 0
-        self.perSecond = 1.0
         self.gen = False
 
         self.nextDistTicks = self.durations[0]*self.perSecond
@@ -77,7 +81,7 @@ class NodeCoordinator():
 
     def genData(self):
         if (self.gen):
-            out.info('nextIter\n')
+            out.info('generating data\n')
             nextIter = threading.Timer(1.0/self.perSecond, self.genData)
             nextIter.start() 
             sendData = {}
@@ -176,28 +180,35 @@ class NodeCoordinator():
             If so, call send violated to send all violated constraints to coordinator.
             
         """
+        paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
+        paramsChecker.start() 
+        
         # TODO - this is really slow, we could incrementally keep track of everything but for now this is easier to build
         self.valLock.acquire()
-        partialCopy = copy.deepcopy(self.partials)        
+        partialCopy = copy.deepcopy(self.node['partials'])        
+        topkCopy = copy.deepcopy(self.topk)
         self.valLock.release()    
 
-        out.info("CHECK_PARMARMAROEWFEW")
 
         # Loop through the topk nodes, get the lowest value  
         # Loop through each object and check against others
 
         violated_objects = []
-        for top_obj in self.topk:
-            for obj in self.node.iteritems():
-                if(obj not in self.topk):
-                    if((self.node['partials'][top_obj]['val']) + (self.node['partials'][top_obj]['param']) < (self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])):
-                        violated_objects.append(self.node['partials'][top_obj])
+        for top_obj in topkCopy:
+            # a, b, c
+            for obj, vals in partialCopy.iteritems():
+                # a: {val: 4, adj: 3}
+                if(obj not in topkCopy):
+                    if(partialCopy[top_obj]['val'] + partialCopy[top_obj]['param'] < partialCopy[obj]['val'] + partialCopy[obj]['param']):
+                        violated_objects.append(obj)
                         # sendConstraintViolation(self.node['partials'][top_obj])
         if(len(violated_objects) > 0):
-            sendConstraintViolation(violated_objects)
+            out.warn("Detected violated objects: %s\n" % violated_objects)
+            self.sendConstraintViolation(violated_objects, partialCopy, topkCopy)
 
 
-                   
+        
+         
         # To coordinator, send a message containing: all members in resolution set, and special border values 
 
 
@@ -220,10 +231,10 @@ class NodeCoordinator():
         self.valLock.acquire()
       
         for obj, adjFactor in data['params'].iteritems():
-            if obj in self.partials:
-                self.partials[obj]['param'] = adjFactor
+            if obj in self.node['partials']:
+                self.node['partials'][obj]['param'] = adjFactor
             else:
-                self.partials[obj] = {'val': 0, 'param': adjFactor}
+                self.node['partials'][obj] = {'val': 0, 'param': adjFactor}
 
         self.valLock.release() 
     
@@ -252,7 +263,7 @@ class NodeCoordinator():
         elif (msgType == settings.MSG_SET_NODE_PARAMETERS):
             # Request to set the adjustment parameters for each object at this node
             out.info("Setting node parameters assigned from coodinators.\n")
-            params = data['params']
+            params = data['data']
             self.setParams(params)
         elif (msgType == settings.MSG_START_GEN):
             # Start generating data
@@ -264,7 +275,7 @@ class NodeCoordinator():
             self.stopGen()
 
 
-    def sendConstraintViolation(self, violated_objects):
+    def sendConstraintViolation(self, violated_objects, partialCopy, topkCopy):
         """
             Sends data = {
                             'topk' : {
@@ -279,40 +290,45 @@ class NodeCoordinator():
             }
         """
 
+        print ("partialCopy: %s" % partialCopy)
         sendData = {}
-        sendData['topk'] = {}
 
-        # Get partial values of top k items
-        for obj in self.topk:
-            sendData['topk'][obj] = self.node['partials'][obj]['val']
+        sendData['topk'] = topkCopy
+        sendData['violations'] = violated_objects
 
-        # Get partial values of violated items
-        sendData['violations'] = {}
+        sendData['partials'] = {}
+        for obj in topkCopy:
+            sendData['partials'][obj] = partialCopy[obj]
+
         for obj in violated_objects:
-            sendData['violations'][obj] = self.node['partials'][obj]['val']
-
+            sendData['partials'][obj] = partialCopy[obj]
+            
         # Compute Border Value B for this node
-
         # min adjusted value among topk items
         min_topk = 10000    
-        for obj in self.topk:
-            if(((self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])) < min_topk):
-                min_topk = (self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])
+        for obj in topkCopy:
+            print ("obj: %s" % obj)
+            if((partialCopy[obj]['val'] + partialCopy[obj]['param']) < min_topk):
+                min_topk = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
 
         # Max adjusted value among non top k items
         max_non_topk = 0
-        for obj in self.node.iteritems():
-            if obj not in self.topk:
-                if(((self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])) > max_non_topk):
-                    max_non_topk = (self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])
+        for obj in partialCopy.keys():
+            if obj not in topkCopy:
+                print ("obj: %s" % obj)
+                if((partialCopy[obj]['val'] + partialCopy[obj]['param']) > max_non_topk):
+                    max_non_topk = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
 
         border_value = min(min_topk, max_non_topk)
 
         sendData['border'] = border_value
 
-        
-        msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': hn, 'data' : sendData}
-        comm.send_msg((node['ip'], self.nodeport), msg)
+       
+        out.warn("Send violated constraints.\n")
+        out.warn("%s" % sendData)
+ 
+        msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': self.hn, 'data' : sendData}
+        comm.send_msg(self.master_address, msg)
 
 
 

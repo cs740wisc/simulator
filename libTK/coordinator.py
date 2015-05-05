@@ -38,6 +38,7 @@ class Coordinator():
         self.epsilon = 0
 
         self.dataLock = threading.Lock()
+        self.resolveLock = threading.Lock()
 
         # Original thread needs to stay open to listen as server
         # Contacts all nodes, performs resolution, sets up initial parameters       
@@ -46,13 +47,41 @@ class Coordinator():
  
         
 	# Wait for 10 seconds for enough data to be generated
-        time.sleep(10)
+        time.sleep(3)
 
         # Perform initial resolution
         initial_resolve_thread = threading.Thread(target=self.performInitialResolution)
         initial_resolve_thread.start()
 
+    def resolve(self, hn, data):
+        """
+            Loop through all objects it has received
+        """
+    
+        # Get a lock so only one resolution
+        self.resolveLock.acquire()
 
+        # Check if topk is valid, if not don't resolve
+        
+        violated_objects = data['violations']
+        topk = data['topk']
+        partials_at_node = data['partials']
+
+        for top_obj in topk:
+            # a, b, c
+            for obj in violated_objects:
+                partial_val = partials_at_node[obj]
+               
+                if (partial_val['val'] + partial_val['adj'] + self.coord 
+                    if(partialCopy[top_obj]['val'] + partialCopy[top_obj]['param'] < partialCopy[obj]['val'] + partialCopy[obj]['param']):
+                        violated_objects.append(obj)
+                        # sendConstraintViolation(self.node['partials'][top_obj])
+
+        # Check for invalidations
+        violated_objects = 
+        
+        
+        self.resolveLock.release()
 
 
     def receivedData(self, requestSock, data):
@@ -73,11 +102,10 @@ class Coordinator():
 
         if   (msgType == settings.MSG_GET_OBJECT_COUNTS_RESPONSE):
             # From generator, request for a specific node should increment value by 1.
-            
             self.setObjectStats(hn, data['data'])
         elif (msgType == settings.MSG_CONST_VIOLATIONS):
             # Phase 2
-            resolve(hn, data['data'])
+            self.resolve(hn, data['data'])
 
         elif (msgType == 'getVals'):
             # Request to get all current values at this node
@@ -131,19 +159,6 @@ class Coordinator():
         self.dataLock.release()
 
         self.calcEverything(nodes)
-
-        #leewayVals = calculateLeewayVals(participatingSum, borderSum)
-
-
-        #participatingNodes = self.nodes.keys()
-
-        # Will assign adjustment factors to nodes, 
-        #performReallocation(sortedVals)
-        #setTopK(sortVals)
-        # All nodes have values, now aggregate them
-        
-        # TODO add resolution release, only one resolution can occur at once
-        
 
     def calcEverything(self, nodes):
 
@@ -201,12 +216,15 @@ class Coordinator():
             for hn, node in nodes.iteritems():
                 adjustFactors[hn] = {}
                 for o in participatingObjects:
-                    out.info("hn: %s. o: %s\n" % (hn, o))
-                    out.info("border: %s.\n" % node['border'])
-                    out.info("val: %s.\n" % node['partials'][o]['val'])
-                    out.info("nodeF: %s.\n" % node['F'])
-                    out.info("leeway: %s.\n" % leeway[o])
-                    adjustFactors[hn][o] = node['border'] - node['partials'][o]['val'] + node['F']*leeway[o]
+                    border = node.get('border', 0.0)
+                    if (o in node['partials']):
+                        partialVal = node['partials'][o]['val']
+                    else:
+                        partialVal = 0.0
+                    
+                    allocLeeway = node['F']*leeway[o]
+ 
+                    adjustFactors[hn][o] = border - partialVal + allocLeeway
                     # TODO - might need to also subtract epsilon from node adjustment factors when object is in topk objects
                     out.warn("result: %s.\n" % adjustFactors[hn][o])
                     # Look at Part 2 of Algorithm 3.1 in paper - it is unclear
@@ -217,16 +235,20 @@ class Coordinator():
             # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
             coordAdjFactors = {}
             for o in participatingObjects:
-                coordAdjFactors[o] = self.coordVals['border'] - self.coordVals['partials'][o]['val'] + self.coordVals['F']*leeway[o]
+                border = self.coordVals.get('border', 0.0)
+                if (o in self.coordVals['partials']):
+                    partialVal = self.coordVals['partials'][o]['val']
+                else:
+                    partialVal = 0.0
+                    
+                allocLeeway = self.coordVals['F']*leeway[o]
+                coordAdjFactors[o] = border - partialVal + allocLeeway
                 if (o in topKObjects):
                     coordAdjFactors[o] -= self.epsilon
                     
     
             out.info("coordAdjFactors: %s.\n" % coordAdjFactors)
            
-    
-            # TODO this code is wrong somehow, not sure what is going wrong
-
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
             for hn, node in nodes.iteritems():
                 sendData = {}
@@ -237,8 +259,6 @@ class Coordinator():
                 comm.send_msg((node['ip'], self.nodeport), msg)
 
 
-
-    
         except Exception as e:
             out.err('calcEverything Exception: %s\n' % e)    
 
@@ -277,6 +297,11 @@ class Coordinator():
         self.nodes[hn]['waiting'] = False
         self.dataLock.release()
 
+
+
+    
+
+
     def setTopK(sortVals):
 
         # Set the top k value, only keep the top however if not enough objs
@@ -284,6 +309,7 @@ class Coordinator():
             self.topk = sortVals
         else:
             self.topk = sortVals[0:self.k]
+
 
     def requestCurrentVals(self, objects, nodes):
         """
