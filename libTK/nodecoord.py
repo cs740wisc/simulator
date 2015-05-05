@@ -31,14 +31,14 @@ class NodeCoordinator():
         self.node['partials']['c'] = {'val': 9.0, 'param': 0.0}
         self.valLock.release()
         
-        self.loadData()
+        self.rollingWindow = deque()
         self.master_address = master_address
         
+        self.loadData()
         
-        self.sendData_thread = threading.Thread(target=self.sendData)
+        self.sendData_thread = threading.Thread(target=self.genData)
         self.sendData_thread.start()
 
-        self.rollingWindow = deque()
         self.checkWindow_thread = threading.Thread(target=self.checkWindow)
         self.checkWindow_thread.start()
 
@@ -62,12 +62,11 @@ class NodeCoordinator():
  
         self.dataIndex = 0
         self.dataTicks = 0
-        self.perSecond = 1
+        self.perSecond = 1.0
         self.gen = False
 
         self.nextDistTicks = self.durations[0]*self.perSecond
         self.startGen()
-        threading.Timer(1.0/self.perSecond, self.genData).start() 
 
     def stopGen(self):
         self.gen = False
@@ -77,6 +76,7 @@ class NodeCoordinator():
 
     def genData(self):
         if (self.gen):
+            out.info('nextIter\n')
             nextIter = threading.Timer(1.0/self.perSecond, self.genData)
             nextIter.start() 
             sendData = {}
@@ -85,7 +85,6 @@ class NodeCoordinator():
                 if (d > 0):
                     sendData[chr(i+97)]=d
            
-             
             self.addRequest(sendData)
 
             self.dataTicks += 1
@@ -96,20 +95,12 @@ class NodeCoordinator():
                 if (self.dataIndex >= len(self.durations)):
                     # Exit if there are no durations left specified
                     out.warn("No more distributions, exiting.\n")
-                    self.run = False
+                    self.stopGen()
                     nextIter.cancel()
                 else:
                     # Otherwise calculate the next time we must switch
                     self.nextDistTicks = self.dataTicks + self.durations[self.dataIndex] * self.perSecond
                     out.warn("Switching to the next distribution.\n")
-
-
-
-    def sendData(self):
-        """
-
-        """
-
 
     def receivedData(self, requestSock, data):
         """ 
@@ -143,30 +134,8 @@ class NodeCoordinator():
         nodeCopy = copy.deepcopy(self.node)
         self.valLock.release()
 
-        nodecopy = {}
-        if (hn == 'h1'):
-            nodecopy['border'] = 1.5
-            nodecopy['partials'] = {}
-            nodecopy['partials']['a'] = {'val': 3.0, 'param': 0.0}
-            nodecopy['partials']['b'] = {'val': 1.5, 'param': 0.0}
-            nodecopy['partials']['c'] = {'val': 2.99, 'param': 0.0}
-        elif (hn == 'h2'):
-            nodecopy['border'] = 1.5
-            nodecopy['partials'] = {}
-            nodecopy['partials']['a'] = {'val': 3.0, 'param': 0.0}
-            nodecopy['partials']['b'] = {'val': 3.0, 'param': 0.0}
-            nodecopy['partials']['c'] = {'val': 1.5, 'param': 0.0}
-        else:           
-            nodecopy['border'] = 2.3
-            nodecopy['partials'] = {}
-            nodecopy['partials']['a'] = {'val': 3.01, 'param': 0.0}
-            nodecopy['partials']['b'] = {'val': 2.3, 'param': 0.0}
-            nodecopy['partials']['c'] = {'val': 2.3, 'param': 0.0}
-
-
-  
         addr = (srcIP, settings.RECV_PORT)
-        msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodecopy, 'hn': hn}
+        msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodeCopy, 'hn': hn}
 
         comm.send_msg(addr, msg) 
 
@@ -197,11 +166,8 @@ class NodeCoordinator():
                 
                 self.valLock.release()
 
-
-            print self.node['partials']
             # Sleep a little so we aren't doing this too often
             time.sleep(1)
-
 
     def addRequest(self, data):
         """

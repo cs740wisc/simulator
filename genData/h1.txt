@@ -1,1 +1,1 @@
-[{"duration": 30, "freqs": {"a":1}}, {"duration": 30, "freqs": {"d": 2}}]
+[{"duration": 5, "freqs": {"a":1}}, {"duration": 5, "freqs": {"d": 2}}]
