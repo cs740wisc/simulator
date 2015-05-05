@@ -1,0 +1,2 @@
+[{"duration": 30, "freqs": {"m":3}}, 
+ {"duration": 30, "freqs": {"n": 1}}]

@@ -15,7 +15,7 @@ class Coordinator():
 
     """
 
-    def __init__(self, k, nodeport):
+    def __init__(self, k, nodeport, testname):
         """ Receives number of nodes.
             Looks up based on hostname to find all ip addresses
             Stores hostname 
@@ -41,7 +41,7 @@ class Coordinator():
 
         # Original thread needs to stay open to listen as server
         # Contacts all nodes, performs resolution, sets up initial parameters       
-        performInit_thread = threading.Thread(target=self.performInitialResolution)
+        performInit_thread = threading.Thread(target=self.sendStartCmd)
         performInit_thread.start()
  
 
@@ -69,6 +69,13 @@ class Coordinator():
             # Request to get all current values at this node
             # Simply send to the coordinator
             self.getVals(hn, requestSock)
+
+
+    def sendStartCmd(self):
+        for hn, node in self.nodes.iteritems():
+            msg = {"msgType": settings.MSG_START_GEN, "hn": hn}
+            comm.send_msg((node['ip'], self.nodeport), msg)
+
 
     def performInitialResolution(self):
             

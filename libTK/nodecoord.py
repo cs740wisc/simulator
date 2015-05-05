@@ -15,7 +15,7 @@ class NodeCoordinator():
         Receives any new messages, and calculates if any updates are necessary
 
     """
-    def __init__(self, master_address):
+    def __init__(self, master_address, hostname, testname):
         out.info("Instantiating node coordinator class.\n")
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
@@ -24,13 +24,14 @@ class NodeCoordinator():
         self.topk = []
         self.valLock.acquire()
         self.node = {}
-        self.node['border'] = 12.0
+        self.node['border'] = 0.0
         self.node['partials'] = {}
-        self.node['partials']['a'] = {'val': 15.0, 'param': 0.0}
-        self.node['partials']['b'] = {'val': 12.0, 'param': 0.0}
-        self.node['partials']['c'] = {'val': 9.0, 'param': 0.0}
         self.valLock.release()
-        
+       
+    
+        self.hn = hostname
+        self.testname = testname
+ 
         self.rollingWindow = deque()
         self.master_address = master_address
         
@@ -40,14 +41,14 @@ class NodeCoordinator():
         self.sendData_thread.start()
 
         self.checkWindow_thread = threading.Thread(target=self.checkWindow)
-        self.checkWindow_thread.start()
+        #self.checkWindow_thread.start()
 
     def loadData(self):
         """
             Opens a file which provides the json specification for test datasets
             Assumes that each key will default to generating at 1 val per second
         """
-        self.loadedData = yaml.load(open('genData/h1.txt', 'r'))
+        self.loadedData = yaml.load(open('genData/%s/%s.txt' % (self.testname, self.hn), 'r'))
 
         self.data = [[0 for col in range(25)] for row in range(len(self.loadedData))]
         # Assume 10 seconds if not mentioned
@@ -66,7 +67,7 @@ class NodeCoordinator():
         self.gen = False
 
         self.nextDistTicks = self.durations[0]*self.perSecond
-        self.startGen()
+        #self.startGen()
 
     def stopGen(self):
         self.gen = False
@@ -102,31 +103,6 @@ class NodeCoordinator():
                     self.nextDistTicks = self.dataTicks + self.durations[self.dataIndex] * self.perSecond
                     out.warn("Switching to the next distribution.\n")
 
-    def receivedData(self, requestSock, data):
-        """ 
-            Listens for data from the coordinator or generator. Handles appropriately.
-        """
-        #out.info("Node received message: %s\n" % data)
-        msgType = data['msgType']
-        hn = data['hn']
-        srcIP = requestSock.getpeername()[0]
-
-        if   (msgType == settings.MSG_REQUEST_DATA):
-            # From generator, request for a specific node should increment value by 1.
-            obj  = data['object']
-            self.addRequest(obj)
-        elif (msgType == settings.MSG_GET_OBJECT_COUNTS):
-            # Request to get all current values at this node
-            # Simply send to the coordinator
-            out.info("Returning current object counts to coordinator.\n")
-            self.getAllPartialVals(hn, srcIP)
-        elif (msgType == settings.MSG_SET_NODE_PARAMETERS):
-            # Request to set the adjustment parameters for each object at this node
-            out.info("Setting node parameters assigned from coodinators.\n")
-            params = data['params']
-            
-            self.setParams(params)
-
 
     def getAllPartialVals(self, hn, srcIP):
 
@@ -141,6 +117,9 @@ class NodeCoordinator():
 
 
     def getSomePartialVals(self, hn, srcIP, whichVals):
+        """ Needs to return partial values, along with the border value.
+        """
+
 
         self.valLock.acquire()
         valsCopy = copy.deepcopy(self.vals)
@@ -155,6 +134,7 @@ class NodeCoordinator():
     def checkWindow(self):
         while self.gen:
 
+            print("partials: %s" % self.node['partials'])
             currtime = time.time()
             while (len(self.rollingWindow) > 0 and (currtime - self.rollingWindow[0][0] > 15)):
                 t, data = self.rollingWindow.popleft()
@@ -231,3 +211,39 @@ class NodeCoordinator():
                 self.partials[obj] = {'val': 0, 'param': adjFactor}
 
         self.valLock.release() 
+    
+
+
+
+    def receivedData(self, requestSock, data):
+        """ 
+            Listens for data from the coordinator or generator. Handles appropriately.
+        """
+        #out.info("Node received message: %s\n" % data)
+        msgType = data['msgType']
+        hn = data['hn']
+        srcIP = requestSock.getpeername()[0]
+        out.info('Received message: %s\n' % msgType)
+        
+        if   (msgType == settings.MSG_REQUEST_DATA):
+            # From generator, request for a specific node should increment value by 1.
+            obj  = data['object']
+            self.addRequest(obj)
+        elif (msgType == settings.MSG_GET_OBJECT_COUNTS):
+            # Request to get all current values at this node
+            # Simply send to the coordinator
+            out.info("Returning current object counts to coordinator.\n")
+            self.getAllPartialVals(hn, srcIP)
+        elif (msgType == settings.MSG_SET_NODE_PARAMETERS):
+            # Request to set the adjustment parameters for each object at this node
+            out.info("Setting node parameters assigned from coodinators.\n")
+            params = data['params']
+            self.setParams(params)
+        elif (msgType == settings.MSG_START_GEN):
+            # Start generating data
+            self.startGen()
+            nextIter = threading.Timer(1.0/self.perSecond, self.genData)
+            nextIter.start() 
+            self.checkWindow_thread.start()
+        elif (msgType == settings.MSG_STOP_GEN):
+            self.stopGen()

@@ -47,21 +47,21 @@ def saveNodesToFile(net, numnodes):
 
 
 
-def startScreens(net, numnodes, ips, nodeport, masterport, topk):
+def startScreens(net, numnodes, ips, nodeport, masterport, topk, testname):
     # Start the screens on each machine
     for i in range(numnodes):
 
         # START THE NODES
         hn = 'h%s' % (i + 1)
         h = net.get(hn) 
-        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/mon.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport)
+        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/mon.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s --testname %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport, testname)
         print(runCmd)
         #h.cmd(runCmd)
 
     cstr = 'c0'
     c = net.get(cstr)
     # Start the coordinator machine
-    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --nodeport %s' % (masterport, ips['coords']['c0']['ip'], topk, nodeport)
+    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --nodeport %s --testname %s' % (masterport, ips['coords']['c0']['ip'], topk, nodeport, testname)
     print(runCmd)
     #c.cmd(runCmd)
 
@@ -79,7 +79,7 @@ def stopScreens(net, numnodes):
     # Start the coordinator machine
     c.cmd(killCmd)
 
-def simpleTest(topk, nodes, nodeport, masterport):
+def simpleTest(topk, nodes, nodeport, masterport, testname):
     "Create and test a simple network"
     topo = SingleSwitchTopo(nodes)
     net = Mininet(topo)
@@ -87,7 +87,7 @@ def simpleTest(topk, nodes, nodeport, masterport):
 
     ips = saveNodesToFile(net, nodes)
 
-    startScreens(net, nodes, ips, nodeport, masterport, topk)
+    startScreens(net, nodes, ips, nodeport, masterport, topk, testname)
  
     CLI(net)
 
@@ -101,6 +101,7 @@ def setupArgParse():
     p.add_argument('-n', '--nodes', help='Number of nodes', type=int, default=8)
     p.add_argument('-s', '--nodeport', help='Host port to listen on', type=int, default=10000)
     p.add_argument('-p', '--masterport', help='Port of the master node.', type=int, default=11000)
+    p.add_argument('-t', '--testname', help='Test data to select from.', type=str, default='same')
 
     return p
 
@@ -111,4 +112,4 @@ if __name__ == '__main__':
 
     # Tell mininet to print useful information
     setLogLevel('info')
-    simpleTest(args.topk, args.nodes, args.nodeport, args.masterport)
+    simpleTest(args.topk, args.nodes, args.nodeport, args.masterport, args.testname)

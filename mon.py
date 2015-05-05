@@ -32,6 +32,7 @@ def setupArgParse():
     p.add_argument('-m', '--masterip', help='IP of the master node which coordinates everything.', type=str, default='localhost')
     p.add_argument('-n', '--masterport', help='Port of the master node.', type=int, default=11000)
     p.add_argument('-s', '--hostname', help='Hostname of this host.', type=str, default='h1')
+    p.add_argument('-t', '--testname', help='Name of the test to run.', type=str, default='same')
 
     return p
 
@@ -42,7 +43,7 @@ if (__name__ == "__main__"):
     args = p.parse_args()
     
 
-    node_coord = nodecoord.NodeCoordinator((args.masterip, args.masterport))
+    node_coord = nodecoord.NodeCoordinator((args.masterip, args.masterport), args.hostname, args.testname)
 
     server = ThreadedTCPServer((args.nodeip, args.nodeport), ThreadedTCPRequestHandler, node_coord, (args.masterip, args.masterport))
     ip, port = server.server_address
