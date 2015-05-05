@@ -44,6 +44,16 @@ class Coordinator():
         performInit_thread = threading.Thread(target=self.sendStartCmd)
         performInit_thread.start()
  
+        
+	# Wait for 10 seconds for enough data to be generated
+        time.sleep(10)
+
+        # Perform initial resolution
+        initial_resolve_thread = threading.Thread(target=self.performInitialResolution)
+        initial_resolve_thread.start()
+
+
+
 
     def receivedData(self, requestSock, data):
         """ 
@@ -65,6 +75,10 @@ class Coordinator():
             # From generator, request for a specific node should increment value by 1.
             
             self.setObjectStats(hn, data['data'])
+        elif (msgType == settings.MSG_CONST_VIOLATIONS):
+            # Phase 2
+            resolve(hn, data['data'])
+
         elif (msgType == 'getVals'):
             # Request to get all current values at this node
             # Simply send to the coordinator

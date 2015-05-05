@@ -181,10 +181,25 @@ class NodeCoordinator():
         partialCopy = copy.deepcopy(self.partials)        
         self.valLock.release()    
 
+        out.info("CHECK_PARMARMAROEWFEW")
+
         # Loop through the topk nodes, get the lowest value  
         # Loop through each object and check against others
-               
+
+        violated_objects = []
+        for top_obj in self.topk:
+            for obj in self.node.iteritems():
+                if(obj not in self.topk):
+                    if((self.node['partials'][top_obj]['val']) + (self.node['partials'][top_obj]['param']) < (self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])):
+                        violated_objects.append(self.node['partials'][top_obj])
+                        # sendConstraintViolation(self.node['partials'][top_obj])
+        if(len(violated_objects) > 0):
+            sendConstraintViolation(violated_objects)
+
+
+                   
         # To coordinator, send a message containing: all members in resolution set, and special border values 
+
 
 
 
@@ -247,3 +262,57 @@ class NodeCoordinator():
             self.checkWindow_thread.start()
         elif (msgType == settings.MSG_STOP_GEN):
             self.stopGen()
+
+
+    def sendConstraintViolation(self, violated_objects):
+        """
+            Sends data = {
+                            'topk' : {
+                                        obj1:val1
+                                        obj2:val2
+                            }
+                            'violations' : {
+                                        obj1:val1
+                                        obj2:val2
+                            }
+                            'border' : border_value
+            }
+        """
+
+        sendData = {}
+        sendData['topk'] = {}
+
+        # Get partial values of top k items
+        for obj in self.topk:
+            sendData['topk'][obj] = self.node['partials'][obj]['val']
+
+        # Get partial values of violated items
+        sendData['violations'] = {}
+        for obj in violated_objects:
+            sendData['violations'][obj] = self.node['partials'][obj]['val']
+
+        # Compute Border Value B for this node
+
+        # min adjusted value among topk items
+        min_topk = 10000    
+        for obj in self.topk:
+            if(((self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])) < min_topk):
+                min_topk = (self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])
+
+        # Max adjusted value among non top k items
+        max_non_topk = 0
+        for obj in self.node.iteritems():
+            if obj not in self.topk:
+                if(((self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])) > max_non_topk):
+                    max_non_topk = (self.node['partials'][obj]['val']) + (self.node['partials'][obj]['param'])
+
+        border_value = min(min_topk, max_non_topk)
+
+        sendData['border'] = border_value
+
+        
+        msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': hn, 'data' : sendData}
+        comm.send_msg((node['ip'], self.nodeport), msg)
+
+
+
