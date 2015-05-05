@@ -230,11 +230,11 @@ class NodeCoordinator():
         # Set up all the new parameters
         self.valLock.acquire()
       
-        for obj, adjFactor in data['params'].iteritems():
+        for obj, partial in data['partials'].iteritems():
             if obj in self.node['partials']:
-                self.node['partials'][obj]['param'] = adjFactor
+                self.node['partials'][obj]['param'] = partial['param']
             else:
-                self.node['partials'][obj] = {'val': 0, 'param': adjFactor}
+                self.node['partials'][obj] = {'val': 0, 'param': partial['param']}
 
         self.valLock.release() 
     

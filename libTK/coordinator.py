@@ -30,12 +30,15 @@ class Coordinator():
         self.nodes = self.ips['nodes']
         
         self.nodeport = nodeport
-        self.k = k
-
-        self.topk = []
         self.F_coord = 0.5
         # TODO: change to input from program
         self.epsilon = 0
+        self.k = k
+
+
+
+
+        self.topk = []
 
         self.dataLock = threading.Lock()
         self.resolveLock = threading.Lock()
@@ -57,7 +60,9 @@ class Coordinator():
         """
             Loop through all objects it has received
         """
-    
+   
+        return
+        """ 
         # Get a lock so only one resolution
         self.resolveLock.acquire()
 
@@ -77,12 +82,8 @@ class Coordinator():
                         violated_objects.append(obj)
                         # sendConstraintViolation(self.node['partials'][top_obj])
 
-        # Check for invalidations
-        violated_objects = 
-        
-        
         self.resolveLock.release()
-
+        """
 
     def receivedData(self, requestSock, data):
         """ 
@@ -143,7 +144,7 @@ class Coordinator():
             comm.send_msg((node['ip'], self.nodeport), msg)
 
         self.coordVals = {}
-        self.coordVals['partials'] = {'a': {'val': 0.0, 'param': 0.0}, 'b': {'val': 0.0, 'param': 0.0}, 'c': {'val': 0.0, 'param': 0.0}}
+        self.coordVals['partials'] = {}
         self.coordVals['border'] = 0.0
         self.coordVals['F'] = self.F_coord
        
@@ -153,21 +154,20 @@ class Coordinator():
         self.waitForResponses()        
         
         out.info("Responses arrived, calculating leeway values.\n")
-        # 
-        self.dataLock.acquire()     
-        nodes = copy.deepcopy(self.nodes)
-        self.dataLock.release()
 
-        self.calcEverything(nodes)
+        self.resolveLock.acquire()
+        self.calcEverything()
 
-    def calcEverything(self, nodes):
+        self.resolveLock.release()
+
+    def calcEverything(self):
 
         try:
             participatingSum = {}
             borderSum = 0
             aggregateSum = {}
     
-            for hn, node in nodes.iteritems():
+            for hn, node in self.nodes.iteritems():
                 borderSum += node['border']
                 for key, info in node['partials'].iteritems():
                     if key in participatingSum:
@@ -210,53 +210,56 @@ class Coordinator():
     
             out.info("leeway: %s.\n" % leeway)
     
-            adjustFactors = {}
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS
-            for hn, node in nodes.iteritems():
-                adjustFactors[hn] = {}
+            for hn, node in self.nodes.iteritems():
                 for o in participatingObjects:
                     border = node.get('border', 0.0)
                     if (o in node['partials']):
+                        out.info("1\n")
                         partialVal = node['partials'][o]['val']
                     else:
+                        out.info("2\n")
                         partialVal = 0.0
                     
                     allocLeeway = node['F']*leeway[o]
  
-                    adjustFactors[hn][o] = border - partialVal + allocLeeway
-                    # TODO - might need to also subtract epsilon from node adjustment factors when object is in topk objects
-                    out.warn("result: %s.\n" % adjustFactors[hn][o])
-                    # Look at Part 2 of Algorithm 3.1 in paper - it is unclear
+                    node['partials'][o]['param'] = border - partialVal + allocLeeway
            
-            out.info("adjust factors: %s.\n" % adjustFactors)
-    
+            out.info("3\n")
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
-            coordAdjFactors = {}
             for o in participatingObjects:
                 border = self.coordVals.get('border', 0.0)
-                if (o in self.coordVals['partials']):
-                    partialVal = self.coordVals['partials'][o]['val']
-                else:
-                    partialVal = 0.0
+                if (o not in self.coordVals['partials']):
+                    self.coordVals['partials'][o] = {'val': 0.0, 'param': 0.0}
+
+                partialVal = self.coordVals['partials'][o]['val']
                     
+                out.info("4\n")
                 allocLeeway = self.coordVals['F']*leeway[o]
-                coordAdjFactors[o] = border - partialVal + allocLeeway
+                out.info("5\n")
+                out.info("%s" % self.coordVals['partials'])
+                self.coordVals['partials'][o]['param'] = border - partialVal + allocLeeway
+                out.info("6\n")
                 if (o in topKObjects):
-                    coordAdjFactors[o] -= self.epsilon
-                    
-    
-            out.info("coordAdjFactors: %s.\n" % coordAdjFactors)
-           
+                    out.info("6.5\n")
+                    self.coordVals['partials'][o]['param'] -= self.epsilon
+                out.info("7\n")
+          
+
+            out.info("5\n")
+ 
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
-            for hn, node in nodes.iteritems():
+            for hn, node in self.nodes.iteritems():
                 sendData = {}
                 sendData['topk'] = topKObjects
-                sendData['params'] = adjustFactors[hn]
-                
+                sendData['partials'] = node['partials']
+               
+                 
                 msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
                 comm.send_msg((node['ip'], self.nodeport), msg)
+            out.info("6\n")
 
 
         except Exception as e:
