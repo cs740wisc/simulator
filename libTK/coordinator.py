@@ -146,7 +146,7 @@ class Coordinator():
         # min adjusted value among topk items
 
         if len(self.topk) == 0:
-            self.node['border'] = 0.0
+            self.coordVals['border'] = 0.0
             return
 
         
@@ -159,7 +159,7 @@ class Coordinator():
                 if(partials[obj]['param'] > max_non_topk):
                     max_non_topk = partials[obj]['param']
 
-        self.node['border'] = max_non_topk
+        self.coordVals['border'] = max_non_topk
 
     def resolve(self, hn, data):
         """
@@ -181,12 +181,16 @@ class Coordinator():
 
         # Don't process any messages that refer to old data
         if (self.topk_iter > topk_iter):
+            out.info("Data for %s out of data, removing.\n" % hn)
             self.resolveLock.release()
             return
          
-        resolution_set = violated_objects.extend(topk)
+        resolution_set = violated_objects
+        resolution_set.extend(topk)
+        out.info("Resolution set: %s.\n" % resolution_set)
 
 
+        out.info("checking if valid for host: %s.\n" % hn)
         stillValid = self.validationTest(hn, violated_objects, topk, partials_at_node)
         # Check if topk is valid, if not don't resolve
        
@@ -243,15 +247,12 @@ class Coordinator():
             borderSum = 0
             aggregateSum = {}
     
-            ###########################################################################
-            # 1- done
-            # 2-  i
-            # FIGURE OUT WHETHER WE ARE ITERATING OVER ALL POSSIBLE NODES, OR JUST THE SINGLE ONE
             if (host):
                 hns = [host]
             else:
                 hns = self.nodes.keys()
 
+            out.info("1\n")
             for hn in hns:
                 node = self.nodes[hn]
                 borderSum += node['border']
@@ -267,11 +268,13 @@ class Coordinator():
                         participatingSum[key] = info['val'] + info['param']
                         aggregateSum[key] = info['val']
 
+            out.info("2\n")
             ###########################################################################
             self.setBorderVal()
+            out.info("3\n")
                 
             # TODO add the max of the adjustment params at the coordinator not in resolution set
-            borderSum += self.node['border']
+            borderSum += self.coordVals['border']
     
             """
             out.info("Participating sum: %s.\n" % participatingSum)
@@ -327,7 +330,7 @@ class Coordinator():
            
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
-            for o in participatingObjects:
+            for o in res:
                 border = self.coordVals.get('border', 0.0)
                 if (o not in self.coordVals['partials']):
                     self.coordVals['partials'][o] = {'val': 0.0, 'param': 0.0}
@@ -346,12 +349,12 @@ class Coordinator():
                 sendData['partials'] = node['partials']
             
                 if (setTopK):     
-                    msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
-                else: 
+                    self.topk_iter += 1
                     sendData['topk'] = topKObjects
                     sendData['topk_iter'] = self.topk_iter
                     msg = {"msgType": settings.MSG_SET_TOPK, 'hn': hn, 'data': sendData}
-                    self.topk_iter += 1
+                else: 
+                    msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
                
                 comm.send_msg((node['ip'], self.nodeport), msg)
 
@@ -392,10 +395,6 @@ class Coordinator():
         self.nodes[hn]['border'] = data['border']
         self.nodes[hn]['waiting'] = False
         self.dataLock.release()
-
-
-
-    
 
 
     def setTopK(sortVals):
@@ -464,7 +463,7 @@ class Coordinator():
         
         out.info("Responses arrived, calculating leeway values.\n")
 
-        self.self.performReallocation()
+        self.performReallocation()
 
         self.resolveLock.release()
 

@@ -18,6 +18,7 @@ class NodeCoordinator():
         out.info("Instantiating node coordinator class.\n")
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
+        self.constraints_lock = threading.Lock()
       
         self.topk = []
         self.valLock.acquire()
@@ -25,7 +26,8 @@ class NodeCoordinator():
         self.node['border'] = 0.0
         self.node['partials'] = {}
         self.valLock.release()
-       
+      
+        self.topk_iter = 0 
         self.in_resolution = False
  
         self.hn = hostname
@@ -75,6 +77,7 @@ class NodeCoordinator():
 
     def stopGen(self):
         self.gen = False
+        self.waiting = False
 
     def startGen(self):
         self.gen = True
@@ -143,8 +146,8 @@ class NodeCoordinator():
 
     def checkWindow(self):
         while self.gen:
-
-            print("partials: %s" % self.node['partials'])
+            
+            out.info('checking window\n')
             currtime = time.time()
             while (len(self.rollingWindow) > 0 and (currtime - self.rollingWindow[0][0] > 15)):
                 t, data = self.rollingWindow.popleft()
@@ -190,6 +193,7 @@ class NodeCoordinator():
             Sets the topk set and adjustment parameters which will be monitored 
         """
         self.topk = data['topk']
+        self.topk_iter = data['topk_iter']
         self.clearWaitingConstraints()
         # Set up all the new parameters
         self.valLock.acquire()
@@ -255,7 +259,7 @@ class NodeCoordinator():
             self.setParams(params)
         elif (msgType == settings.MSG_SET_TOPK):
             # Request to set the adjustment parameters for each object at this node
-            out.info("Setting node parameters assigned from coodinators.\n")
+            out.info("Setting topk and node parameters assigned from coodinators.\n")
             params = msg['data']
             self.setTopK(params)
         elif (msgType == settings.MSG_START_GEN):
@@ -268,25 +272,7 @@ class NodeCoordinator():
             self.stopGen()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def sendConstraintViolation(self, violated_objects, partialCopy, topkCopy):
+    def sendConstraintViolation(self, violated_objects, partialCopy, topkCopy, topk_iterCopy):
         """
             Sends data = {
                             'topk' : {
@@ -305,6 +291,7 @@ class NodeCoordinator():
         sendData = {}
 
         sendData['topk'] = topkCopy
+        sendData['topk_iter'] = topk_iterCopy
         sendData['violations'] = violated_objects
 
         sendData['partials'] = {}
@@ -347,12 +334,15 @@ class NodeCoordinator():
         self.waiting = True
         self.constraints_lock.release()
     
-    def clearWaitingConstraints(self)
+    def clearWaitingConstraints(self):
         self.constraints_lock.acquire()
         self.waiting = False
         self.constraints_lock.release()
         
-    
+    def waitOnConstraints(self):
+        while (self.waiting):
+            out.info('waiting\n')
+            time.sleep(1) 
 
 
     def checkParams(self):
@@ -366,8 +356,10 @@ class NodeCoordinator():
         self.valLock.acquire()
         partialCopy = copy.deepcopy(self.node['partials'])        
         topkCopy = copy.deepcopy(self.topk)
+        topk_iterCopy = copy.deepcopy(self.topk_iter)
         self.valLock.release()    
 
+        out.warn("checkParams\npartials: %s\ntopkCopy: %s\n" % (partialCopy, topkCopy))
 
         # Loop through the topk nodes, get the lowest value  
         # Loop through each object and check against others
@@ -384,7 +376,7 @@ class NodeCoordinator():
         if(len(violated_objects) > 0):
             out.warn("Detected violated objects: %s\n" % violated_objects)
             self.setWaitingConstraints()
-            self.sendConstraintViolation(violated_objects, partialCopy, topkCopy)
+            self.sendConstraintViolation(violated_objects, partialCopy, topkCopy, topk_iterCopy)
             self.waitOnConstraints()
 
 
