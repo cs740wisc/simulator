@@ -8,7 +8,7 @@ from collections import deque
 
 # Store adjustment factors for each object
 
-class NodeCoordinator():
+class Monitor():
     """
         Maintains the per node values
         Receives any new messages, and calculates if any updates are necessary
@@ -306,7 +306,7 @@ class NodeCoordinator():
 
        
         out.warn("Send violated constraints.\n")
-        out.warn("%s" % sendData)
+        out.warn("%s\n" % sendData)
  
         msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': self.hn, 'data' : sendData}
         comm.send_msg(self.master_address, msg)

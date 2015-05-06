@@ -46,8 +46,8 @@ class Coordinator():
         performInit_thread = threading.Thread(target=self.sendStartCmd)
         performInit_thread.start()
  
-        
-	# Wait for 10 seconds for enough data to be generated
+            
+        # Wait for 10 seconds for enough data to be generated
         time.sleep(3)
 
         # Perform initial resolution
@@ -55,28 +55,23 @@ class Coordinator():
         initial_resolve_thread.start()
 
 
-
-
-
-
-
-    def getSomePartials(self, hn, resolution_set):
+    #########################################################################################################
+    #########################################################################################################
+    def getSomePartials(self, ignore_host, resolution_set):
         """
             Send a message to each node asking to get partial values. 
             Should set waiting to True for each node so we can wait for the proper response
         """
         for hn, node in self.nodes.iteritems():
-            node['waiting'] = True
-            
-            msg = {"msgType": settings.MSG_GET_SOME_OBJECT_COUNTS, "hn": hn, "data": resolution_set}
-            comm.send_msg((node['ip'], self.nodeport), msg)
+            if (hn != ignore_host): 
+                node['waiting'] = True
+                
+                msg = {"msgType": settings.MSG_GET_SOME_OBJECT_COUNTS, "hn": hn, "data": resolution_set}
+                comm.send_msg((node['ip'], self.nodeport), msg)
+    #########################################################################################################
 
-
-    def performReallocation(self):
-        pass
-
-
-
+    #########################################################################################################
+    #########################################################################################################
     def validationTest(self, hn, violated_objects, topk, partials_at_node):
         """
 
@@ -104,8 +99,11 @@ class Coordinator():
 
         # If we get here everything should be ok, so return True
         return True
+    #########################################################################################################
 
 
+    #########################################################################################################
+    #########################################################################################################
     def receivedData(self, requestSock, data):
         """ 
             Listens for any response messages. They are detailed below.
@@ -116,7 +114,7 @@ class Coordinator():
 
  
         """
-        out.info("Coordinator Received Message: %s\n" % data)
+        out.warn("RECV_MSG: %s\n" % data)
 
         msgType = data['msgType']
         hn = data['hn']
@@ -133,14 +131,20 @@ class Coordinator():
             # Request to get all current values at this node
             # Simply send to the coordinator
             self.getVals(hn, requestSock)
+    #########################################################################################################
 
 
+    #########################################################################################################
+    #########################################################################################################
     def sendStartCmd(self):
         for hn, node in self.nodes.iteritems():
             msg = {"msgType": settings.MSG_START_GEN, "hn": hn}
             comm.send_msg((node['ip'], self.nodeport), msg)
+    #########################################################################################################
 
     
+    #########################################################################################################
+    #########################################################################################################
     def setBorderVal(self):
         # Compute Border Value B for this node
         # min adjusted value among topk items
@@ -160,7 +164,10 @@ class Coordinator():
                     max_non_topk = partials[obj]['param']
 
         self.coordVals['border'] = max_non_topk
+    #########################################################################################################
 
+    #########################################################################################################
+    #########################################################################################################
     def resolve(self, hn, data):
         """
             Perform the entire resolution.
@@ -181,10 +188,13 @@ class Coordinator():
 
         # Don't process any messages that refer to old data
         if (self.topk_iter > topk_iter):
-            out.info("Data for %s out of data, removing.\n" % hn)
+            out.info("Data for %s out of date, removing.\n" % hn)
             self.resolveLock.release()
             return
-         
+
+        # Set new stats so reallocation works properly        
+        self.setObjectStats(hn, data)
+
         resolution_set = violated_objects
         resolution_set.extend(topk)
         out.info("Resolution set: %s.\n" % resolution_set)
@@ -206,9 +216,13 @@ class Coordinator():
             self.performReallocation(res=resolution_set, host=None, topkObjects=None) 
 
 
+        out.err("TOPK OBJECTS: %s\n" % self.topk)
         self.resolveLock.release()
+    #########################################################################################################
 
 
+    #########################################################################################################
+    #########################################################################################################
     def performReallocation(self, res=None, host=None, topkObjects=None):
         """
             Todo - will receive a list of hosts, and a list of objects
@@ -252,12 +266,16 @@ class Coordinator():
             else:
                 hns = self.nodes.keys()
 
+            out.info("res: %s.\n" % res)
+            out.info("host: %s.\n" % host)
+            out.info("topkObjects: %s.\n" % topkObjects)
             out.info("1\n")
             for hn in hns:
                 node = self.nodes[hn]
                 borderSum += node['border']
                 for key, info in node['partials'].iteritems():
                     if (res is not None and key not in res):
+                        #out.warn("REALLOC: skipping object %s.\n" % key)
                         continue
  
                     # We have already seen key, just add to this key
@@ -276,11 +294,9 @@ class Coordinator():
             # TODO add the max of the adjustment params at the coordinator not in resolution set
             borderSum += self.coordVals['border']
     
-            """
             out.info("Participating sum: %s.\n" % participatingSum)
             out.info("Aggregate sum: %s.\n" % aggregateSum)
             out.info("Border sum: %s.\n" % borderSum)
-            """
 
             ###################################################
             # SORT TO GET TOP K
@@ -288,17 +304,11 @@ class Coordinator():
                 sortedVals = self.sortVals(aggregateSum)
                 # In single case, particating is the resolution set and topk is already known
                 res = [a[0] for a in sortedVals]
-                topKObjects = [a[0] for a in sortedVals[0:self.k]]
-                self.topk = topKObjects
+                topkObjects = [a[0] for a in sortedVals[0:self.k]]
+                self.topk = topkObjects
 
-
-
-            """
-            out.info("sortedVals: %s.\n" % sortedVals)
-            out.info("topk: %s.\n" % topk)
-            out.info("participatingObjects: %s.\n" % participatingObjects)
-            out.info("topKObjects: %s.\n" % topKObjects)
-            """    
+            out.info("res: %s.\n" % res)
+            out.info("topkObjects: %s.\n" % topkObjects)
 
             ####################################################
             # CALCULATE LEEWAY
@@ -307,7 +317,7 @@ class Coordinator():
             for o in res:
                 # If the object is in the top k set, we need to include epsilon
                 leeway[o] = participatingSum[o] - borderSum + self.epsilon
-                if (o in topKObjects): 
+                if (o in topkObjects): 
                     leeway[o] += self.epsilon
     
     
@@ -318,16 +328,19 @@ class Coordinator():
             for hn in hns:
                 node = self.nodes[hn]
                 for o in res:
+                    out.info("o: %s   node: %s\n" % (o, node))
                     border = node.get('border', 0.0)
-                    if (o in node['partials']):
-                        partialVal = node['partials'][o]['val']
-                    else:
-                        partialVal = 0.0
+                    if (o not in node['partials']):
+                        node['partials'][o] = {'val': 0.0, 'param': 0.0}
                     
+
+                    partialVal = node['partials'][o]['val']
+
                     allocLeeway = node['F']*leeway[o]
  
                     node['partials'][o]['param'] = border - partialVal + allocLeeway
            
+            out.info("4\n")
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
             for o in res:
@@ -339,18 +352,22 @@ class Coordinator():
                     
                 allocLeeway = self.coordVals['F']*leeway[o]
                 self.coordVals['partials'][o]['param'] = border - partialVal + allocLeeway
-                if (o in topKObjects):
+                if (o in topkObjects):
                     self.coordVals['partials'][o]['param'] -= self.epsilon
  
+            out.info("5\n")
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
+            if (setTopK):    
+                self.topk_iter += 1
+
+
             for hn in hns:
                 node = self.nodes[hn]
                 sendData = {}
                 sendData['partials'] = node['partials']
             
                 if (setTopK):     
-                    self.topk_iter += 1
-                    sendData['topk'] = topKObjects
+                    sendData['topk'] = topkObjects
                     sendData['topk_iter'] = self.topk_iter
                     msg = {"msgType": settings.MSG_SET_TOPK, 'hn': hn, 'data': sendData}
                 else: 
@@ -360,7 +377,10 @@ class Coordinator():
 
         except Exception as e:
             out.err('calcEverything Exception: %s\n' % e)    
+    #########################################################################################################
 
+    #########################################################################################################
+    #########################################################################################################
     def waitForResponses(self):
         """
             waits until all nodes have responded with their partial values.
@@ -381,12 +401,13 @@ class Coordinator():
 
             # Sleep a little so we don't waste cycles        
             time.sleep(0.5)                
+    #########################################################################################################
 
+    #########################################################################################################
+    #########################################################################################################
     def setObjectStats(self, hn, data):
         """
             Updates the initial values at node hn. 
-            Check if all nodes have sent their response. 
-            If so, initialize aggregation of all
         """
         # TODO - use a copy of nodes so we can handle a resolution set that isn't everything
         out.info("Setting object stats for host: %s\n" % hn)
@@ -396,7 +417,10 @@ class Coordinator():
         self.nodes[hn]['waiting'] = False
         self.dataLock.release()
 
+    #########################################################################################################
 
+    #########################################################################################################
+    #########################################################################################################
     def setTopK(sortVals):
 
         # Set the top k value, only keep the top however if not enough objs
@@ -405,15 +429,10 @@ class Coordinator():
         else:
             self.topk = sortVals[0:self.k]
 
+    #########################################################################################################
 
-    def requestCurrentVals(self, objects, nodes):
-        """
-            Requests the current partial values from Nj
-            nodes: Nj, nodes involved in resolution set
-            objects: Oi, objects in resolution
-            
-        """
-        pass    
+    #########################################################################################################
+    #########################################################################################################
     def sortVals(self, vals):
         """ 
             Expects a dictionary of d[key] = value
@@ -422,10 +441,13 @@ class Coordinator():
 
         sortedVals = sorted(vals.items(), key=operator.itemgetter(1), reverse=True)
         return sortedVals
+    #########################################################################################################
     
 
 
 
+    #########################################################################################################
+    #########################################################################################################
     def performInitialResolution(self):
             
 
@@ -467,26 +489,4 @@ class Coordinator():
 
         self.resolveLock.release()
 
-
-    def waitForResponses(self):
-        """
-            waits until all nodes have responded with their partial values.
-
-        """
-        waiting = False
-
-        while (True):
-            waiting = False
-            # Iterate through nodes, make sure all have responded
-            for hn, node in self.nodes.iteritems():
-                if (node['waiting']):
-                    waiting = True
-
-            # If we are no longer waiting on any nodes return
-            if (not waiting):
-                return
-
-            # Sleep a little so we don't waste cycles        
-            time.sleep(0.5)                
-    
-
+    #########################################################################################################

@@ -4,7 +4,7 @@ sys.path.append('/home/mininet/simulator/')
 import socket, threading, SocketServer
 from libTK import *
 from libTK import settings
-from libTK import nodecoord
+from libTK import monitor
 from libTK import comm
 
 
@@ -43,7 +43,7 @@ if (__name__ == "__main__"):
     args = p.parse_args()
     
 
-    node_coord = nodecoord.NodeCoordinator((args.masterip, args.masterport), args.hostname, args.testname)
+    node_coord = monitor.Monitor((args.masterip, args.masterport), args.hostname, args.testname)
 
     server = ThreadedTCPServer((args.nodeip, args.nodeport), ThreadedTCPRequestHandler, node_coord, (args.masterip, args.masterport))
     ip, port = server.server_address

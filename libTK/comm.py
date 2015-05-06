@@ -7,7 +7,7 @@ from libTK import *
 def send_msg(addr, msg):
     """ Creates a socket and sends message to the addr. """
     try:
-        out.info("Sending message to %s port %s: %s\n" % (addr[0], addr[1], msg))
+        out.warn("SENDMSG: %s:%s: %s\n" % (addr[0], addr[1], msg))
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.connect(addr)
