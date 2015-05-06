@@ -12,6 +12,7 @@ import os, re, sys
 MSG_REQUEST_DATA = 'request'
 MSG_SET_NODE_PARAMETERS = 'setNodeParams'
 MSG_GET_OBJECT_COUNTS = 'getCounts'
+MSG_GET_SOME_OBJECT_COUNTS = 'getSomeCounts'
 MSG_GET_OBJECT_COUNTS_RESPONSE = 'getCountsResponse'
 MSG_START_GEN = 'startGen'
 MSG_STOP_GEN = 'stopGen'

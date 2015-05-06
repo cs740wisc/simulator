@@ -1,21 +1,2 @@
-
-
-#############################################
-General
-
-    - add locks to all multithreaded server structs
-        - improve these
-    - implement everything in 
-        https://github.com/mininet/mininet/wiki/Introduction-to-Mininet#why
-
-#############################################
-
-#############################################
-Coordinator
-
-    - get initialization working
-
-
-
- 
-- screens don't close when mininet dies
+topk indexing
+reallocation
