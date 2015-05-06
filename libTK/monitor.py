@@ -374,6 +374,7 @@ class Monitor():
                         violated_objects.append(obj)
                         # sendConstraintViolation(self.node['partials'][top_obj])
         if(len(violated_objects) > 0):
+            violated_objects = list(set(violated_objects))
             out.warn("Detected violated objects: %s\n" % violated_objects)
             self.setWaitingConstraints()
             self.sendConstraintViolation(violated_objects, partialCopy, topkCopy, topk_iterCopy)
