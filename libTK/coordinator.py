@@ -34,6 +34,7 @@ class Coordinator():
         # TODO: change to input from program
         self.epsilon = 0
         self.k = k
+        self.topk_iter = 0
 
         self.topk = []
 
@@ -176,7 +177,13 @@ class Coordinator():
         violated_objects = data['violations']
         topk = data['topk']
         partials_at_node = data['partials']
-        
+        topk_iter = data['topk_iter']
+
+        # Don't process any messages that refer to old data
+        if (self.topk_iter > topk_iter):
+            self.resolveLock.release()
+            return
+         
         resolution_set = violated_objects.extend(topk)
 
 
@@ -185,14 +192,14 @@ class Coordinator():
        
         if stillValid:
             out.info("TOPK still valid, performing reallocation.\n")
-            self.performReallocation(res=resolution_set, host=hn) 
+            self.performReallocation(res=resolution_set, host=hn, topkObjects=topk) 
         else:
             out.info("TOPK no longer valid, getting all partial objects.\n")
             self.getSomePartials(hn, resolution_set)
 
             # Blocking, will not complete until everything is completed
             self.waitForResponses()
-            self.performReallocation(res=resolution_set, host=hn) 
+            self.performReallocation(res=resolution_set, host=None, topkObjects=None) 
 
 
         self.resolveLock.release()
@@ -224,6 +231,12 @@ class Coordinator():
         """
 
         try:
+
+
+            if (topkObjects):
+                setTopK = False
+            else:
+                setTopK = True
 
 
             participatingSum = {}
@@ -266,7 +279,6 @@ class Coordinator():
             out.info("Border sum: %s.\n" % borderSum)
             """
 
-
             ###################################################
             # SORT TO GET TOP K
             if (topkObjects is None):
@@ -275,9 +287,6 @@ class Coordinator():
                 res = [a[0] for a in sortedVals]
                 topKObjects = [a[0] for a in sortedVals[0:self.k]]
                 self.topk = topKObjects
-
-
-
 
 
 
@@ -303,7 +312,8 @@ class Coordinator():
     
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS
-            for hn, node in self.nodes.iteritems():
+            for hn in hns:
+                node = self.nodes[hn]
                 for o in res:
                     border = node.get('border', 0.0)
                     if (o in node['partials']):
@@ -330,13 +340,19 @@ class Coordinator():
                     self.coordVals['partials'][o]['param'] -= self.epsilon
  
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
-            for hn, node in self.nodes.iteritems():
+            for hn in hns:
+                node = self.nodes[hn]
                 sendData = {}
-                sendData['topk'] = topKObjects
                 sendData['partials'] = node['partials']
+            
+                if (setTopK):     
+                    msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
+                else: 
+                    sendData['topk'] = topKObjects
+                    sendData['topk_iter'] = self.topk_iter
+                    msg = {"msgType": settings.MSG_SET_TOPK, 'hn': hn, 'data': sendData}
+                    self.topk_iter += 1
                
-                 
-                msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
                 comm.send_msg((node['ip'], self.nodeport), msg)
 
         except Exception as e:
@@ -423,6 +439,8 @@ class Coordinator():
         
         self.F_node = (1.0 - self.F_coord) / len(self.nodes) 
 
+        self.resolveLock.acquire()
+        
         out.info("F_node: %s.\n" % self.F_node)
         for hn, node in self.nodes.iteritems():
             node['partials'] = {}
@@ -446,121 +464,10 @@ class Coordinator():
         
         out.info("Responses arrived, calculating leeway values.\n")
 
-        self.resolveLock.acquire()
-        self.calcEverything()
+        self.self.performReallocation()
 
         self.resolveLock.release()
 
-    def calcEverything(self):
-        """
-            Todo - will receive a list of hosts, and a list of objects
-            Just allocates based on those objects
-        """
-
-        try:
-            participatingSum = {}
-            borderSum = 0
-            aggregateSum = {}
-    
-            for hn, node in self.nodes.iteritems():
-                borderSum += node['border']
-                for key, info in node['partials'].iteritems():
-                    if key in participatingSum:
-                        participatingSum[key] += info['val'] + info['param']
-                        aggregateSum[key] += info['val']
-                    else:
-                        participatingSum[key] = info['val'] + info['param']
-                        aggregateSum[key] = info['val']
-    
-            # TODO add the max of the adjustment params at the coordinator not in resolution set
-            borderSum += 0
-    
-    
-            out.info("Participating sum: %s.\n" % participatingSum)
-            out.info("Aggregate sum: %s.\n" % aggregateSum)
-            out.info("Border sum: %s.\n" % borderSum)
-    
-            ###################################################
-            # SORT TO GET TOP K
-            sortedVals = self.sortVals(aggregateSum)
-            topk = sortedVals[0:self.k]
-
-            # In single case, particating is the resolution set and topk is already known
-            participatingObjects = [a[0] for a in sortedVals]
-            topKObjects = [a[0] for a in topk]
-    
-            out.info("sortedVals: %s.\n" % sortedVals)
-            out.info("topk: %s.\n" % topk)
-            out.info("participatingObjects: %s.\n" % participatingObjects)
-            out.info("topKObjects: %s.\n" % topKObjects)
-    
-            ####################################################
-            # CALCULATE LEEWAY
-            leeway = {}
-            
-            for o in participatingObjects:
-                # If the object is in the top k set, we need to include epsilon
-                leeway[o] = participatingSum[o] - borderSum + self.epsilon
-                if (o in topKObjects): 
-                    leeway[o] += self.epsilon
-    
-    
-            out.info("leeway: %s.\n" % leeway)
-    
-            #####################################################
-            # ASSIGN ADJUSTMENT FACTORS
-            for hn, node in self.nodes.iteritems():
-                for o in participatingObjects:
-                    border = node.get('border', 0.0)
-                    if (o in node['partials']):
-                        out.info("1\n")
-                        partialVal = node['partials'][o]['val']
-                    else:
-                        out.info("2\n")
-                        partialVal = 0.0
-                    
-                    allocLeeway = node['F']*leeway[o]
- 
-                    node['partials'][o]['param'] = border - partialVal + allocLeeway
-           
-            out.info("3\n")
-            #####################################################
-            # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
-            for o in participatingObjects:
-                border = self.coordVals.get('border', 0.0)
-                if (o not in self.coordVals['partials']):
-                    self.coordVals['partials'][o] = {'val': 0.0, 'param': 0.0}
-
-                partialVal = self.coordVals['partials'][o]['val']
-                    
-                out.info("4\n")
-                allocLeeway = self.coordVals['F']*leeway[o]
-                out.info("5\n")
-                out.info("%s" % self.coordVals['partials'])
-                self.coordVals['partials'][o]['param'] = border - partialVal + allocLeeway
-                out.info("6\n")
-                if (o in topKObjects):
-                    out.info("6.5\n")
-                    self.coordVals['partials'][o]['param'] -= self.epsilon
-                out.info("7\n")
-          
-
-            out.info("5\n")
- 
-            ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
-            for hn, node in self.nodes.iteritems():
-                sendData = {}
-                sendData['topk'] = topKObjects
-                sendData['partials'] = node['partials']
-               
-                 
-                msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
-                comm.send_msg((node['ip'], self.nodeport), msg)
-            out.info("6\n")
-
-
-        except Exception as e:
-            out.err('calcEverything Exception: %s\n' % e)    
 
     def waitForResponses(self):
         """
@@ -583,46 +490,4 @@ class Coordinator():
             # Sleep a little so we don't waste cycles        
             time.sleep(0.5)                
     
-
-
-
-    def performInitialResolution(self):
-            
-
-        # TODO add resolution lock, only one resolution can occur at once
-        # TODO separate these into functions, make it so initial top k query is the same as later queries
-
-        # Start process to get initial top k values, this will be used to set thresholds at each node
-        # Responses must be handled asynchronously
-        out.info("Sending requests for all data to each node for initial top-k computation.\n")
-        
-        self.F_node = (1.0 - self.F_coord) / len(self.nodes) 
-
-        out.info("F_node: %s.\n" % self.F_node)
-        for hn, node in self.nodes.iteritems():
-            node['partials'] = {}
-            node['border'] = 0
-            node['F'] = self.F_node
-
-            node['waiting'] = True
-            
-            msg = {"msgType": settings.MSG_GET_OBJECT_COUNTS, "hn": hn}
-            comm.send_msg((node['ip'], self.nodeport), msg)
-
-        self.coordVals = {}
-        self.coordVals['partials'] = {}
-        self.coordVals['border'] = 0.0
-        self.coordVals['F'] = self.F_coord
-       
- 
-        out.info("Waiting for all responses to arrive.\n")
-        # Will wait until all nodes have values
-        self.waitForResponses()        
-        
-        out.info("Responses arrived, calculating leeway values.\n")
-
-        self.resolveLock.acquire()
-        self.calcEverything()
-
-        self.resolveLock.release()
 

@@ -26,7 +26,8 @@ class NodeCoordinator():
         self.node['partials'] = {}
         self.valLock.release()
        
-    
+        self.in_resolution = False
+ 
         self.hn = hostname
         self.testname = testname
  
@@ -105,7 +106,6 @@ class NodeCoordinator():
                     self.nextDistTicks = self.dataTicks + self.durations[self.dataIndex] * self.perSecond
                     out.warn("Switching to the next distribution.\n")
 
-
     def getAllPartialVals(self, srcIP):
 
         self.valLock.acquire()
@@ -177,9 +177,7 @@ class NodeCoordinator():
 
         self.valLock.release()    
 
-
-        
-    def setParams(self, data):
+    def setTopK(self, data):
         """
             Receives a message containing:
             data = {
@@ -192,6 +190,7 @@ class NodeCoordinator():
             Sets the topk set and adjustment parameters which will be monitored 
         """
         self.topk = data['topk']
+        self.clearWaitingConstraints()
         # Set up all the new parameters
         self.valLock.acquire()
       
@@ -203,8 +202,28 @@ class NodeCoordinator():
 
         self.valLock.release() 
     
+    def setParams(self, data):
+        """
+            Receives a message containing:
+            data = {
+                        'topk': [objA, objB, ...]
+                        'params': {
+                                     'objA': adjA
+                                     'objB': adjB
+                                  }
+                    }
+            Sets the topk set and adjustment parameters which will be monitored 
+        """
+        self.clearWaitingConstraints()
+        # Set up all the new parameters
+        self.valLock.acquire()
+        for obj, partial in data['partials'].iteritems():
+            if obj in self.node['partials']:
+                self.node['partials'][obj]['param'] = partial['param']
+            else:
+                self.node['partials'][obj] = {'val': 0, 'param': partial['param']}
 
-
+        self.valLock.release() 
 
     def receivedData(self, requestSock, msg):
         """ 
@@ -234,6 +253,11 @@ class NodeCoordinator():
             out.info("Setting node parameters assigned from coodinators.\n")
             params = msg['data']
             self.setParams(params)
+        elif (msgType == settings.MSG_SET_TOPK):
+            # Request to set the adjustment parameters for each object at this node
+            out.info("Setting node parameters assigned from coodinators.\n")
+            params = msg['data']
+            self.setTopK(params)
         elif (msgType == settings.MSG_START_GEN):
             # Start generating data
             self.startGen()
@@ -242,6 +266,24 @@ class NodeCoordinator():
             self.checkWindow_thread.start()
         elif (msgType == settings.MSG_STOP_GEN):
             self.stopGen()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     def sendConstraintViolation(self, violated_objects, partialCopy, topkCopy):
@@ -282,8 +324,6 @@ class NodeCoordinator():
         msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': self.hn, 'data' : sendData}
         comm.send_msg(self.master_address, msg)
 
-
-
     def findBorderVal(self, topkCopy, partialCopy):
         # Compute Border Value B for this node
         # min adjusted value among topk items
@@ -301,15 +341,26 @@ class NodeCoordinator():
 
         border_value = min(min_topk, max_non_topk)
         return border_value
+
+    def setWaitingConstraints(self):
+        self.constraints_lock.acquire()
+        self.waiting = True
+        self.constraints_lock.release()
     
+    def clearWaitingConstraints(self)
+        self.constraints_lock.acquire()
+        self.waiting = False
+        self.constraints_lock.release()
+        
+    
+
+
     def checkParams(self):
         """
             Go through vals, determine if any were violated.
             If so, call send violated to send all violated constraints to coordinator.
             
         """
-        paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
-        paramsChecker.start() 
         
         # TODO - this is really slow, we could incrementally keep track of everything but for now this is easier to build
         self.valLock.acquire()
@@ -332,4 +383,11 @@ class NodeCoordinator():
                         # sendConstraintViolation(self.node['partials'][top_obj])
         if(len(violated_objects) > 0):
             out.warn("Detected violated objects: %s\n" % violated_objects)
+            self.setWaitingConstraints()
             self.sendConstraintViolation(violated_objects, partialCopy, topkCopy)
+            self.waitOnConstraints()
+
+
+        # don't schedule next thread until we have completed resolving
+        paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
+        paramsChecker.start() 
