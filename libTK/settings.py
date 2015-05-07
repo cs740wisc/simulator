@@ -20,6 +20,7 @@ MSG_STOP_GEN = 'stopGen'
 MSG_CONST_VIOLATIONS = 'handleViolations'
 
 
+MON_ROLLING_WINDOW_TIME = 10
 
 # Addresses / Port
 RECV_PORT = 11000

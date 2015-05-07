@@ -15,7 +15,7 @@ class Monitor():
 
     """
     def __init__(self, master_address, hostname, testname):
-        out.info("Instantiating node coordinator class.\n")
+        out.info("Instantiating monitor class.\n")
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
         self.constraints_lock = threading.Lock()
@@ -65,8 +65,8 @@ class Monitor():
                 self.data[i][ord(key)-ord('a')] = val
             self.durations[i] = d.get('duration', 10)
             
-        out.info("Data initialized: %s\n" % self.data)
-        out.info("Durations initialize: %s\n" % self.durations) 
+        #out.info("Data initialized: %s\n" % self.data)
+        #out.info("Durations initialize: %s\n" % self.durations) 
  
         self.dataIndex = 0
         self.dataTicks = 0
@@ -147,9 +147,9 @@ class Monitor():
     def checkWindow(self):
         while self.gen:
             
-            out.info('checking window\n')
+            #out.info('checking window\n')
             currtime = time.time()
-            while (len(self.rollingWindow) > 0 and (currtime - self.rollingWindow[0][0] > 15)):
+            while (len(self.rollingWindow) > 0 and (currtime - self.rollingWindow[0][0] > settings.MON_ROLLING_WINDOW_TIME)):
                 t, data = self.rollingWindow.popleft()
 
                 self.valLock.acquire()
@@ -233,10 +233,9 @@ class Monitor():
         """ 
             Listens for data from the coordinator or generator. Handles appropriately.
         """
-        #out.info("Node received message: %s\n" % data)
+        out.info("Node received message: %s\n" % msg)
         msgType = msg['msgType']
         srcIP = requestSock.getpeername()[0]
-        out.info('Received message: %s\n' % msgType)
         
         if   (msgType == settings.MSG_REQUEST_DATA):
             # From generator, request for a specific node should increment value by 1.
@@ -287,7 +286,6 @@ class Monitor():
             }
         """
 
-        print ("partialCopy: %s" % partialCopy)
         sendData = {}
 
         sendData['topk'] = topkCopy

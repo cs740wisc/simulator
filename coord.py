@@ -67,6 +67,6 @@ if (__name__ == "__main__"):
         while (True):
             pass 
     except KeyboardInterrupt:
+	coord.stop()	
         server.shutdown()
-
     

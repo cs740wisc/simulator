@@ -1,2 +1,4 @@
-topk indexing
-reallocation
+output all messages to/from coordinator to a file
+
+
+

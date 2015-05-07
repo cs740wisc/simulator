@@ -6,7 +6,7 @@ from libTK import settings
 import time
 import copy
 import operator
-
+import csv
 
 class Coordinator():
     """
@@ -35,24 +35,82 @@ class Coordinator():
         self.epsilon = 0
         self.k = k
         self.topk_iter = 0
-
         self.topk = []
+        
+        self.running = True
+        
+        self.results_path = 'results/%s.csv' % testname
+
+
+        self.output_list = []
 
         self.dataLock = threading.Lock()
         self.resolveLock = threading.Lock()
+        self.outputLock = threading.Lock()
+
+        output_thread = threading.Thread(target=self.outputData)
+        output_thread.start()
+
 
         # Original thread needs to stay open to listen as server
         # Contacts all nodes, performs resolution, sets up initial parameters       
         performInit_thread = threading.Thread(target=self.sendStartCmd)
         performInit_thread.start()
- 
-            
+
         # Wait for 10 seconds for enough data to be generated
         time.sleep(3)
 
         # Perform initial resolution
         initial_resolve_thread = threading.Thread(target=self.performInitialResolution)
         initial_resolve_thread.start()
+
+
+    #########################################################################################################
+    #########################################################################################################
+    def outputData(self):
+        while (self.running):
+            self.outputLock.acquire()
+            rowsOut = copy.deepcopy(self.output_list)
+            self.output_list = []
+            self.outputLock.release()
+
+            if len(rowsOut) > 0:
+                ##########################################
+                # SAVE THE INCOMING DATA TO A FILE        
+                f = open(self.results_path, 'ab')
+                writer = csv.writer(f)
+                writer.writerows(rowsOut)            
+                f.close()
+                ##########################################
+            time.sleep(5)
+
+    #########################################################################################################
+
+    #########################################################################################################
+    #########################################################################################################
+    def stop(self):
+        self.running = False
+    #########################################################################################################
+
+    #########################################################################################################
+    #########################################################################################################
+    def addToOut(self, row):
+        currtime = time.time
+        self.outputLock.acquire()
+        self.output_list.append(row)
+        self.outputLock.release()
+    #########################################################################################################
+    
+    #########################################################################################################
+    #########################################################################################################
+    def send_msg(self, addr, msg):
+        currtime = time.time()
+        #out.warn("msg: %s\n" % msg)
+        outrow = [currtime, 'send', msg['hn'], msg['msgType']]
+    
+        self.addToOut(outrow)
+        comm.send_msg(addr, msg)    
+    #########################################################################################################
 
 
     #########################################################################################################
@@ -67,7 +125,7 @@ class Coordinator():
                 node['waiting'] = True
                 
                 msg = {"msgType": settings.MSG_GET_SOME_OBJECT_COUNTS, "hn": hn, "data": resolution_set}
-                comm.send_msg((node['ip'], self.nodeport), msg)
+                self.send_msg((node['ip'], self.nodeport), msg)
     #########################################################################################################
 
     #########################################################################################################
@@ -104,7 +162,7 @@ class Coordinator():
 
     #########################################################################################################
     #########################################################################################################
-    def receivedData(self, requestSock, data):
+    def receivedData(self, requestSock, msg):
         """ 
             Listens for any response messages. They are detailed below.
             Each response contains the name of the node for each lookup.
@@ -114,18 +172,21 @@ class Coordinator():
 
  
         """
-        out.warn("RECV_MSG: %s\n" % data)
+        out.warn("RECV_MSG: %s\n" % msg)
 
-        msgType = data['msgType']
-        hn = data['hn']
+        msgType = msg['msgType']
+        hn = msg['hn']
 
+        currtime = time.time()
+        outrow = [currtime, 'recv', msg['hn'], msg['msgType']]
+        self.addToOut(outrow)
 
         if   (msgType == settings.MSG_GET_OBJECT_COUNTS_RESPONSE):
             # From generator, request for a specific node should increment value by 1.
-            self.setObjectStats(hn, data['data'])
+            self.setObjectStats(hn, msg['data'])
         elif (msgType == settings.MSG_CONST_VIOLATIONS):
             # Phase 2
-            self.resolve(hn, data['data'])
+            self.resolve(hn, msg['data'])
 
         elif (msgType == 'getVals'):
             # Request to get all current values at this node
@@ -139,7 +200,7 @@ class Coordinator():
     def sendStartCmd(self):
         for hn, node in self.nodes.iteritems():
             msg = {"msgType": settings.MSG_START_GEN, "hn": hn}
-            comm.send_msg((node['ip'], self.nodeport), msg)
+            self.send_msg((node['ip'], self.nodeport), msg)
     #########################################################################################################
 
     
@@ -197,10 +258,10 @@ class Coordinator():
 
         resolution_set = violated_objects
         resolution_set.extend(topk)
-        out.info("Resolution set: %s.\n" % resolution_set)
+        #out.info("Resolution set: %s.\n" % resolution_set)
 
 
-        out.info("checking if valid for host: %s.\n" % hn)
+        #out.info("checking if valid for host: %s.\n" % hn)
         stillValid = self.validationTest(hn, violated_objects, topk, partials_at_node)
         # Check if topk is valid, if not don't resolve
        
@@ -266,10 +327,10 @@ class Coordinator():
             else:
                 hns = self.nodes.keys()
 
-            out.info("res: %s.\n" % res)
-            out.info("host: %s.\n" % host)
-            out.info("topkObjects: %s.\n" % topkObjects)
-            out.info("1\n")
+            #out.info("res: %s.\n" % res)
+            #out.info("host: %s.\n" % host)
+            #out.info("topkObjects: %s.\n" % topkObjects)
+            #out.info("1\n")
             for hn in hns:
                 node = self.nodes[hn]
                 borderSum += node['border']
@@ -286,17 +347,17 @@ class Coordinator():
                         participatingSum[key] = info['val'] + info['param']
                         aggregateSum[key] = info['val']
 
-            out.info("2\n")
+            #out.info("2\n")
             ###########################################################################
             self.setBorderVal()
-            out.info("3\n")
+            #out.info("3\n")
                 
             # TODO add the max of the adjustment params at the coordinator not in resolution set
             borderSum += self.coordVals['border']
     
-            out.info("Participating sum: %s.\n" % participatingSum)
-            out.info("Aggregate sum: %s.\n" % aggregateSum)
-            out.info("Border sum: %s.\n" % borderSum)
+            #out.info("Participating sum: %s.\n" % participatingSum)
+            #out.info("Aggregate sum: %s.\n" % aggregateSum)
+            #out.info("Border sum: %s.\n" % borderSum)
 
             ###################################################
             # SORT TO GET TOP K
@@ -307,8 +368,8 @@ class Coordinator():
                 topkObjects = [a[0] for a in sortedVals[0:self.k]]
                 self.topk = topkObjects
 
-            out.info("res: %s.\n" % res)
-            out.info("topkObjects: %s.\n" % topkObjects)
+            #out.info("res: %s.\n" % res)
+            #out.info("topkObjects: %s.\n" % topkObjects)
 
             ####################################################
             # CALCULATE LEEWAY
@@ -321,14 +382,13 @@ class Coordinator():
                     leeway[o] += self.epsilon
     
     
-            out.info("leeway: %s.\n" % leeway)
+            #out.info("leeway: %s.\n" % leeway)
     
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS
             for hn in hns:
                 node = self.nodes[hn]
                 for o in res:
-                    out.info("o: %s   node: %s\n" % (o, node))
                     border = node.get('border', 0.0)
                     if (o not in node['partials']):
                         node['partials'][o] = {'val': 0.0, 'param': 0.0}
@@ -340,7 +400,7 @@ class Coordinator():
  
                     node['partials'][o]['param'] = border - partialVal + allocLeeway
            
-            out.info("4\n")
+            #out.info("4\n")
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS FOR COORDINATOR
             for o in res:
@@ -355,7 +415,7 @@ class Coordinator():
                 if (o in topkObjects):
                     self.coordVals['partials'][o]['param'] -= self.epsilon
  
-            out.info("5\n")
+            #out.info("5\n")
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
             if (setTopK):    
                 self.topk_iter += 1
@@ -373,7 +433,7 @@ class Coordinator():
                 else: 
                     msg = {"msgType": settings.MSG_SET_NODE_PARAMETERS, 'hn': hn, 'data': sendData}
                
-                comm.send_msg((node['ip'], self.nodeport), msg)
+                self.send_msg((node['ip'], self.nodeport), msg)
 
         except Exception as e:
             out.err('calcEverything Exception: %s\n' % e)    
@@ -388,7 +448,7 @@ class Coordinator():
         """
         waiting = False
 
-        while (True):
+        while (self.running):
             waiting = False
             # Iterate through nodes, make sure all have responded
             for hn, node in self.nodes.iteritems():
@@ -462,7 +522,6 @@ class Coordinator():
 
         self.resolveLock.acquire()
         
-        out.info("F_node: %s.\n" % self.F_node)
         for hn, node in self.nodes.iteritems():
             node['partials'] = {}
             node['border'] = 0
@@ -470,8 +529,8 @@ class Coordinator():
 
             node['waiting'] = True
             
-            msg = {"msgType": settings.MSG_GET_OBJECT_COUNTS}
-            comm.send_msg((node['ip'], self.nodeport), msg)
+            msg = {"msgType": settings.MSG_GET_OBJECT_COUNTS, 'hn': hn}
+            self.send_msg((node['ip'], self.nodeport), msg)
 
         self.coordVals = {}
         self.coordVals['partials'] = {}
@@ -483,10 +542,11 @@ class Coordinator():
         # Will wait until all nodes have values
         self.waitForResponses()        
         
-        out.info("Responses arrived, calculating leeway values.\n")
+        out.info("Responses arrived, performing reallocation.\n")
 
         self.performReallocation()
 
+        out.info("Initial reallocation complete.\n")
         self.resolveLock.release()
 
     #########################################################################################################
