@@ -3,6 +3,9 @@ import threading, socket
 from libTK import comm
 from libTK import settings
 import copy, yaml, time
+import json
+import csv
+
 from collections import deque
 #TODO
 
@@ -14,8 +17,8 @@ class Monitor():
         Receives any new messages, and calculates if any updates are necessary
 
     """
-    def __init__(self, master_address, hostname, testname):
-        out.info("Instantiating monitor class.\n")
+    def __init__(self, master_address, hostname, testname, outputname):
+        #out.info("Instantiating monitor class.\n")
         self.valLock = threading.Lock()
         self.paramLock = threading.Lock()
         self.constraints_lock = threading.Lock()
@@ -32,12 +35,15 @@ class Monitor():
  
         self.hn = hostname
         self.testname = testname
- 
+        self.output_name = 'results/%s/%s.csv' % (outputname, self.hn)
+
         self.rollingWindow = deque()
         self.master_address = master_address
         
         self.perSecond = 1.0
-        
+       
+        self.running = True 
+        self.gen = False
         self.loadData()
         
         self.sendData_thread = threading.Thread(target=self.genData)
@@ -55,12 +61,13 @@ class Monitor():
             Opens a file which provides the json specification for test datasets
             Assumes that each key will default to generating at 1 val per second
         """
-        self.loadedData = yaml.load(open('genData/%s/%s.txt' % (self.testname, self.hn), 'r'))
+        testSpec = json.load(open('genData/%s.txt' % self.testname, 'r'))
+        self.nodeDistribution = testSpec[self.hn]
 
-        self.data = [[0 for col in range(25)] for row in range(len(self.loadedData))]
+        self.data = [[0 for col in range(25)] for row in range(len(self.nodeDistribution))]
         # Assume 10 seconds if not mentioned
-        self.durations = [10 for row in range(len(self.loadedData))]
-        for i, d in enumerate(self.loadedData):
+        self.durations = [10 for row in range(len(self.nodeDistribution))]
+        for i, d in enumerate(self.nodeDistribution):
             for key, val in d['freqs'].iteritems():
                 self.data[i][ord(key)-ord('a')] = val
             self.durations[i] = d.get('duration', 10)
@@ -70,7 +77,6 @@ class Monitor():
  
         self.dataIndex = 0
         self.dataTicks = 0
-        self.gen = False
 
         self.nextDistTicks = self.durations[0]*self.perSecond
         #self.startGen()
@@ -78,6 +84,7 @@ class Monitor():
     def stopGen(self):
         self.gen = False
         self.waiting = False
+	self.running = False
 
     def startGen(self):
         self.gen = True
@@ -101,14 +108,21 @@ class Monitor():
                 self.dataIndex += 1
                 if (self.dataIndex >= len(self.durations)):
                     # Exit if there are no durations left specified
-                    out.warn("No more distributions, exiting.\n")
+                    #out.warn("No more distributions, exiting.\n")
                     self.stopGen()
                     nextIter.cancel()
                 else:
                     # Otherwise calculate the next time we must switch
                     self.nextDistTicks = self.dataTicks + self.durations[self.dataIndex] * self.perSecond
-                    out.warn("Switching to the next distribution.\n")
-
+                    currtime = time.time()
+                    outrow = [currtime, 'switchgens', self.hn, 'None']
+                    f = open(self.output_name, 'ab+')
+                    writer = csv.writer(f)
+                    writer.writerow(outrow)
+                    f.close()
+             
+                    #out.err("Switching to the next distribution.\n")
+    
     def getAllPartialVals(self, srcIP):
 
         self.valLock.acquire()
@@ -233,7 +247,7 @@ class Monitor():
         """ 
             Listens for data from the coordinator or generator. Handles appropriately.
         """
-        out.info("Node received message: %s\n" % msg)
+        #out.info("Node received message: %s\n" % msg)
         msgType = msg['msgType']
         srcIP = requestSock.getpeername()[0]
         
@@ -244,21 +258,21 @@ class Monitor():
         elif (msgType == settings.MSG_GET_OBJECT_COUNTS):
             # Request to get all current values at this node
             # Simply send to the coordinator
-            out.info("Returning current object counts to coordinator.\n")
+            #out.info("Returning current object counts to coordinator.\n")
             self.getAllPartialVals(srcIP)
         elif (msgType == settings.MSG_GET_SOME_OBJECT_COUNTS):
-            out.info("Returning some object counts to coordinator.\n")
+            #out.info("Returning some object counts to coordinator.\n")
             whichVals = msg['data']
             self.getSomePartialVals(srcIP, whichVals)
 
         elif (msgType == settings.MSG_SET_NODE_PARAMETERS):
             # Request to set the adjustment parameters for each object at this node
-            out.info("Setting node parameters assigned from coodinators.\n")
+            #out.info("Setting node parameters assigned from coodinators.\n")
             params = msg['data']
             self.setParams(params)
         elif (msgType == settings.MSG_SET_TOPK):
             # Request to set the adjustment parameters for each object at this node
-            out.info("Setting topk and node parameters assigned from coodinators.\n")
+            #out.info("Setting topk and node parameters assigned from coodinators.\n")
             params = msg['data']
             self.setTopK(params)
         elif (msgType == settings.MSG_START_GEN):
@@ -303,8 +317,8 @@ class Monitor():
         sendData['border'] = self.findBorderVal(topkCopy, partialCopy)
 
        
-        out.warn("Send violated constraints.\n")
-        out.warn("%s\n" % sendData)
+        #out.warn("Send violated constraints.\n")
+        #out.warn("%s\n" % sendData)
  
         msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': self.hn, 'data' : sendData}
         comm.send_msg(self.master_address, msg)
@@ -339,7 +353,7 @@ class Monitor():
         
     def waitOnConstraints(self):
         while (self.waiting):
-            out.info('waiting\n')
+            #out.info('waiting\n')
             time.sleep(1) 
 
 
@@ -357,7 +371,7 @@ class Monitor():
         topk_iterCopy = copy.deepcopy(self.topk_iter)
         self.valLock.release()    
 
-        out.warn("checkParams\npartials: %s\ntopkCopy: %s\n" % (partialCopy, topkCopy))
+        #out.info("checkParams\npartials: %s\ntopkCopy: %s\n" % (partialCopy, topkCopy))
 
         # Loop through the topk nodes, get the lowest value  
         # Loop through each object and check against others
@@ -373,12 +387,13 @@ class Monitor():
                         # sendConstraintViolation(self.node['partials'][top_obj])
         if(len(violated_objects) > 0):
             violated_objects = list(set(violated_objects))
-            out.warn("Detected violated objects: %s\n" % violated_objects)
+            #out.warn("Detected violated objects: %s\n" % violated_objects)
             self.setWaitingConstraints()
             self.sendConstraintViolation(violated_objects, partialCopy, topkCopy, topk_iterCopy)
             self.waitOnConstraints()
 
 
-        # don't schedule next thread until we have completed resolving
-        paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
-        paramsChecker.start() 
+	if (self.running):
+	    # don't schedule next thread until we have completed resolving
+	    paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
+	    paramsChecker.start() 

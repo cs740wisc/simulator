@@ -33,6 +33,7 @@ def setupArgParse():
     p.add_argument('-n', '--masterport', help='Port of the master node.', type=int, default=11000)
     p.add_argument('-s', '--hostname', help='Hostname of this host.', type=str, default='h1')
     p.add_argument('-t', '--testname', help='Name of the test to run.', type=str, default='same')
+    p.add_argument('-o', '--outputname', help='Name of the directory to output to.', type=str, default='same')
 
     return p
 
@@ -43,9 +44,9 @@ if (__name__ == "__main__"):
     args = p.parse_args()
     
 
-    node_coord = monitor.Monitor((args.masterip, args.masterport), args.hostname, args.testname)
+    mon = monitor.Monitor((args.masterip, args.masterport), args.hostname, args.testname, args.outputname)
 
-    server = ThreadedTCPServer((args.nodeip, args.nodeport), ThreadedTCPRequestHandler, node_coord, (args.masterip, args.masterport))
+    server = ThreadedTCPServer((args.nodeip, args.nodeport), ThreadedTCPRequestHandler, mon, (args.masterip, args.masterport))
     ip, port = server.server_address
 
     # Start a thread with the server -- that thread will then start one
@@ -60,10 +61,12 @@ if (__name__ == "__main__"):
 
     # Listen for kill signal, shutdown everything
     try:
-        while (True):
+        while (mon.running):
             pass 
+	else:
+	    server.shutdown()
     except KeyboardInterrupt:
-        node_coord.stopGen()
+        mon.stopGen()
         server.shutdown()
 
     

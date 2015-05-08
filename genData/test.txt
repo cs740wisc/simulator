@@ -1,0 +1,9 @@
+{
+    "c0": {"duration": 60},
+    "h1":
+        [{"duration": 30, "freqs": {"a":2, "b":1}}, 
+         {"duration": 30, "freqs": {"a":2, "b":3}}],
+    "h2":
+        [{"duration": 30, "freqs": {"a":2, "b":1}}, 
+         {"duration": 30, "freqs": {"a":2, "b":3}}]
+}

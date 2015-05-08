@@ -1,0 +1,10 @@
+1431062777.111489,STARTTEST,None,None
+1431062777.111502,send,h1,startGen
+1431062780.133176,send,h1,getCounts
+1431062780.17791,recv,h1,getCountsResponse
+1431062780.640497,send,h1,setTopK
+1431062813.812528,recv,h1,handleViolations
+1431062813.812723,send,h1,setNodeParams
+1431062815.821061,recv,h1,handleViolations
+1431062815.821141,send,h1,setTopK
+1431062857.260357,STOPTEST,None,None

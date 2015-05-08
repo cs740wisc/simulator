@@ -9,7 +9,7 @@ from mininet.util import dumpNodeConnections
 from mininet.log import setLogLevel
 from mininet.cli import CLI
 from libTK import settings
-
+import os
 
 
 class SingleSwitchTopo(Topo):
@@ -47,23 +47,23 @@ def saveNodesToFile(net, numnodes):
 
 
 
-def startScreens(net, numnodes, ips, nodeport, masterport, topk, testname):
+def startScreens(net, numnodes, ips, nodeport, masterport, topk, testname, outputname):
     # Start the screens on each machine
     for i in range(numnodes):
 
         # START THE NODES
         hn = 'h%s' % (i + 1)
         h = net.get(hn) 
-        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/mon.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s --testname %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport, testname)
+        runCmd = 'screen -h 2000 -dmS %s python /home/mininet/simulator/mon.py --hostname %s --nodeport %s --nodeip %s --masterip %s --masterport %s --testname %s --outputname %s' % (hn, hn, nodeport, ips['nodes'][hn]['ip'], ips['coords']['c0']['ip'], masterport, testname, outputname)
         print(runCmd)
-        #h.cmd(runCmd)
+        h.cmd(runCmd)
 
     cstr = 'c0'
     c = net.get(cstr)
     # Start the coordinator machine
-    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --nodeport %s --testname %s' % (masterport, ips['coords']['c0']['ip'], topk, nodeport, testname)
+    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --nodeport %s --testname %s --outputname %s' % (masterport, ips['coords']['c0']['ip'], topk, nodeport, testname, outputname)
     print(runCmd)
-    #c.cmd(runCmd)
+    c.cmd(runCmd)
 
 def stopScreens(net, numnodes):
     # Start the screens on each machine
@@ -79,15 +79,20 @@ def stopScreens(net, numnodes):
     # Start the coordinator machine
     c.cmd(killCmd)
 
-def simpleTest(topk, nodes, nodeport, masterport, testname):
+def simpleTest(topk, nodes, nodeport, masterport, testname, outputname):
     "Create and test a simple network"
     topo = SingleSwitchTopo(nodes)
     net = Mininet(topo)
     net.start()
-
+   
+    outputloc = 'results/%s' % outputname 
+    if not os.path.exists(outputloc):
+        os.makedirs(outputloc)
+   
+ 
     ips = saveNodesToFile(net, nodes)
 
-    startScreens(net, nodes, ips, nodeport, masterport, topk, testname)
+    startScreens(net, nodes, ips, nodeport, masterport, topk, testname, outputname)
  
     CLI(net)
 
@@ -102,6 +107,7 @@ def setupArgParse():
     p.add_argument('-s', '--nodeport', help='Host port to listen on', type=int, default=10000)
     p.add_argument('-p', '--masterport', help='Port of the master node.', type=int, default=11000)
     p.add_argument('-t', '--testname', help='Test data to select from.', type=str, default='same')
+    p.add_argument('-o', '--outputname', help='Location to output test data to.', type=str, default='test')
 
     return p
 
@@ -112,4 +118,4 @@ if __name__ == '__main__':
 
     # Tell mininet to print useful information
     setLogLevel('info')
-    simpleTest(args.topk, args.nodes, args.nodeport, args.masterport, args.testname)
+    simpleTest(args.topk, args.nodes, args.nodeport, args.masterport, args.testname, args.outputname)

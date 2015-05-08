@@ -15,14 +15,14 @@ class Coordinator():
 
     """
 
-    def __init__(self, k, nodeport, testname):
+    def __init__(self, k, nodeport, testname, outputname):
         """ Receives number of nodes.
             Looks up based on hostname to find all ip addresses
             Stores hostname 
             Contacts all nodes, gets all current object counts
         """
 
-        out.info("Instantiating coordinator class.\n")
+        #outinfo("Instantiating coordinator class.\n")
      
         # READ FILE to get hostnames, ips 
         self.ips = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
@@ -36,27 +36,37 @@ class Coordinator():
         self.k = k
         self.topk_iter = 0
         self.topk = []
-        
+         
         self.running = True
         
-        self.results_path = 'results/%s.csv' % testname
-
-
+        self.results_path = 'results/%s/c0.csv' % outputname
+        # Load the duration of the test so we can capture data for the right amount of time
+        testSpec = yaml.load(open('genData/%s.txt' % testname, 'r'))
+        self.duration = testSpec['c0']['duration'] + 2*settings.MON_ROLLING_WINDOW_TIME
+        #outinfo('duration: %s\n' % self.duration)
+        self.start_time = 0
+    
         self.output_list = []
 
+
+        #############################################################
+        # LOCKS
         self.dataLock = threading.Lock()
         self.resolveLock = threading.Lock()
         self.outputLock = threading.Lock()
 
-        output_thread = threading.Thread(target=self.outputData)
-        output_thread.start()
-
+        #############################################################
+        # THREADS
 
         # Original thread needs to stay open to listen as server
         # Contacts all nodes, performs resolution, sets up initial parameters       
         performInit_thread = threading.Thread(target=self.sendStartCmd)
         performInit_thread.start()
 
+        # we need a bunch of simultaneous threads for proper operation
+        output_thread = threading.Thread(target=self.outputData)
+        output_thread.start()
+         
         # Wait for 10 seconds for enough data to be generated
         time.sleep(3)
 
@@ -74,15 +84,33 @@ class Coordinator():
             self.output_list = []
             self.outputLock.release()
 
+            out.info("Outputting to file.\n")
             if len(rowsOut) > 0:
                 ##########################################
                 # SAVE THE INCOMING DATA TO A FILE        
-                f = open(self.results_path, 'ab')
+                f = open(self.results_path, 'ab+')
                 writer = csv.writer(f)
                 writer.writerows(rowsOut)            
                 f.close()
                 ##########################################
+            
+            currtime = time.time()
+            if (currtime - self.start_time > self.duration):
+                # We should have completed everything, so output a final row to the file and exit
+                ##########################################
+                #outwarn("Reached duration, exiting.\n")
+                outrow = [currtime, 'STOPTEST', 'None', 'None']
+                f = open(self.results_path, 'ab+')
+                writer = csv.writer(f)
+                writer.writerow(outrow)            
+                f.close()
+                self.stop()
+                return
+                ##########################################
+                
             time.sleep(5)
+            
+            
 
     #########################################################################################################
 
@@ -132,11 +160,7 @@ class Coordinator():
     #########################################################################################################
     def validationTest(self, hn, violated_objects, topk, partials_at_node):
         """
-
-
         """
-
-
         for top_obj in topk:
             # a, b, c
             for obj in violated_objects:
@@ -172,7 +196,7 @@ class Coordinator():
 
  
         """
-        out.warn("RECV_MSG: %s\n" % msg)
+        #outwarn("RECV_MSG: %s\n" % msg)
 
         msgType = msg['msgType']
         hn = msg['hn']
@@ -198,6 +222,10 @@ class Coordinator():
     #########################################################################################################
     #########################################################################################################
     def sendStartCmd(self):
+        self.start_time = time.time()
+        outrow = [self.start_time, 'STARTTEST', 'None', 'None']
+        self.addToOut(outrow)
+
         for hn, node in self.nodes.iteritems():
             msg = {"msgType": settings.MSG_START_GEN, "hn": hn}
             self.send_msg((node['ip'], self.nodeport), msg)
@@ -240,7 +268,7 @@ class Coordinator():
         # Get a lock so only one resolution
         self.resolveLock.acquire()
 
-        out.info("Checking resolve.\n")
+        #outinfo("Checking resolve.\n")
 
         violated_objects = data['violations']
         topk = data['topk']
@@ -249,7 +277,7 @@ class Coordinator():
 
         # Don't process any messages that refer to old data
         if (self.topk_iter > topk_iter):
-            out.info("Data for %s out of date, removing.\n" % hn)
+            #outinfo("Data for %s out of date, removing.\n" % hn)
             self.resolveLock.release()
             return
 
@@ -266,10 +294,10 @@ class Coordinator():
         # Check if topk is valid, if not don't resolve
        
         if stillValid:
-            out.info("TOPK still valid, performing reallocation.\n")
+            #outinfo("TOPK still valid, performing reallocation.\n")
             self.performReallocation(res=resolution_set, host=hn, topkObjects=topk) 
         else:
-            out.info("TOPK no longer valid, getting all partial objects.\n")
+            #outinfo("TOPK no longer valid, getting all partial objects.\n")
             self.getSomePartials(hn, resolution_set)
 
             # Blocking, will not complete until everything is completed
@@ -277,7 +305,7 @@ class Coordinator():
             self.performReallocation(res=resolution_set, host=None, topkObjects=None) 
 
 
-        out.err("TOPK OBJECTS: %s\n" % self.topk)
+        #outerr("TOPK OBJECTS: %s\n" % self.topk)
         self.resolveLock.release()
     #########################################################################################################
 
@@ -286,27 +314,6 @@ class Coordinator():
     #########################################################################################################
     def performReallocation(self, res=None, host=None, topkObjects=None):
         """
-            Todo - will receive a list of hosts, and a list of objects
-            Just allocates based on those objects
-            
-            Different cases:
-                1. Initialization. We want all objects, and all nodes
-                    res=None, host=None, topkObjects=None
-                    Nodes: all
-                    Objects: all
-
-                2. Simple reallocation
-                    res=[a, b, c], host=h1, topkObjects=[a]
-                    Nodes: coord/specific node
-                    Objects: resolution set
-
-                3. Full reallocation
-                    res=[a,b,c], host=None, topkObjects=None
-                    Nodes: all
-                    Objects: resolution set
-                    All nodes
-
-
         """
 
         try:
@@ -470,7 +477,7 @@ class Coordinator():
             Updates the initial values at node hn. 
         """
         # TODO - use a copy of nodes so we can handle a resolution set that isn't everything
-        out.info("Setting object stats for host: %s\n" % hn)
+        #outinfo("Setting object stats for host: %s\n" % hn)
         self.dataLock.acquire()     
         self.nodes[hn]['partials'] = data['partials']
         self.nodes[hn]['border'] = data['border']
@@ -516,7 +523,7 @@ class Coordinator():
 
         # Start process to get initial top k values, this will be used to set thresholds at each node
         # Responses must be handled asynchronously
-        out.info("Sending requests for all data to each node for initial top-k computation.\n")
+        #outinfo("Sending requests for all data to each node for initial top-k computation.\n")
         
         self.F_node = (1.0 - self.F_coord) / len(self.nodes) 
 
@@ -538,15 +545,15 @@ class Coordinator():
         self.coordVals['F'] = self.F_coord
        
  
-        out.info("Waiting for all responses to arrive.\n")
+        #outinfo("Waiting for all responses to arrive.\n")
         # Will wait until all nodes have values
         self.waitForResponses()        
         
-        out.info("Responses arrived, performing reallocation.\n")
+        #outinfo("Responses arrived, performing reallocation.\n")
 
         self.performReallocation()
 
-        out.info("Initial reallocation complete.\n")
+        #outinfo("Initial reallocation complete.\n")
         self.resolveLock.release()
 
     #########################################################################################################
