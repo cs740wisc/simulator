@@ -11,7 +11,7 @@ from libTK import comm
 class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 
     def handle(self):
-        data = str2json(self.request.recv(1024))
+        data = str2json(self.request.recv(4096))
 
         self.server.node_coord.receivedData(self.request, data)
 

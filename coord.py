@@ -13,7 +13,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 
     def handle(self):
         # Receive the data, parse into json object
-        data = str2json(self.request.recv(1024))
+        data = str2json(self.request.recv(4096))
 
         # Pass off to coord object so it can check for violations
         self.server.coord.receivedData(self.request, data) 

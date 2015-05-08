@@ -1,4 +1,7 @@
 import matplotlib.pyplot as plt
+import matplotlib as m
+import matplotlib.cm as cmx
+import matplotlib.colors as colors
 from numpy.random import rand
 import numpy as np
 import argparse
@@ -8,15 +11,24 @@ def graph(topk_data):
     index = 0
 
 
+    num_eps = len(topk_data)
+    winter = plt.get_cmap('winter')
+    cNorm = colors.Normalize(vmin=0, vmax=num_eps)
+    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=winter)
+    
+
     for ep, data in topk_data.iteritems():
         times = []
         totalCost = []
         totalBytes = 0 
         starttime = 0.0
+        print("ep: %s" % ep)
+        print("index: %s" % index)
         for i in data:
             (time, send_rcv, host, msgType) = i
             time = float(time)
             if (send_rcv == 'STARTTEST'):
+                print("foundStartTime: %s" % time)
                 starttime = time
             elif (send_rcv == 'STOPTEST'):
                 endtime = time
@@ -28,11 +40,12 @@ def graph(topk_data):
                 totalBytes += 1
                
             currtime = time - starttime
-            times.append(time)
+            times.append(currtime)
             totalCost.append(totalBytes) 
               
 
-        plt.plot(times, totalCost, '.-', color=plt.cm.winter(index), label='topk, ep=%s' % ep)
+        colorVal = scalarMap.to_rgba(index)
+        plt.plot(times, totalCost, '.-', color=colorVal, label='topk, ep=%s' % ep)
         index += 1
 
 
