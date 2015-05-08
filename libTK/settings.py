@@ -17,6 +17,7 @@ MSG_GET_SOME_OBJECT_COUNTS = 'getSomeCounts'
 MSG_GET_OBJECT_COUNTS_RESPONSE = 'getCountsResponse'
 MSG_START_GEN = 'startGen'
 MSG_STOP_GEN = 'stopGen'
+MSG_TEST_COMPLETE = 'testComplete'
 MSG_CONST_VIOLATIONS = 'handleViolations'
 
 

@@ -15,7 +15,7 @@ class Coordinator():
 
     """
 
-    def __init__(self, k, nodeport, testname, outputname):
+    def __init__(self, k, epsilon, nodeport, testname, outputname):
         """ Receives number of nodes.
             Looks up based on hostname to find all ip addresses
             Stores hostname 
@@ -28,18 +28,19 @@ class Coordinator():
         self.ips = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
 
         self.nodes = self.ips['nodes']
-        
+        for hn, node in self.nodes.iteritems():
+            node['testComplete'] = False 
+
         self.nodeport = nodeport
         self.F_coord = 0.5
-        # TODO: change to input from program
-        self.epsilon = 0
+        self.epsilon = epsilon
         self.k = k
         self.topk_iter = 0
         self.topk = []
          
         self.running = True
         
-        self.results_path = 'results/%s/c0.csv' % outputname
+        self.results_path = '%s/c0.csv' % outputname
         # Load the duration of the test so we can capture data for the right amount of time
         testSpec = yaml.load(open('genData/%s.txt' % testname, 'r'))
         self.duration = testSpec['c0']['duration'] + 2*settings.MON_ROLLING_WINDOW_TIME
@@ -94,8 +95,14 @@ class Coordinator():
                 f.close()
                 ##########################################
             
-            currtime = time.time()
-            if (currtime - self.start_time > self.duration):
+            testComplete = True
+            for hn, node in self.nodes.iteritems():
+                if (not node['testComplete']):
+                    testComplete = False
+                    break
+
+            if (testComplete):
+                currtime = time.time()
                 # We should have completed everything, so output a final row to the file and exit
                 ##########################################
                 #outwarn("Reached duration, exiting.\n")
@@ -155,6 +162,60 @@ class Coordinator():
                 msg = {"msgType": settings.MSG_GET_SOME_OBJECT_COUNTS, "hn": hn, "data": resolution_set}
                 self.send_msg((node['ip'], self.nodeport), msg)
     #########################################################################################################
+    
+    #########################################################################################################
+    #########################################################################################################
+    def resolve(self, hn, data):
+        """
+            Perform the entire resolution.
+            Check if we all global constraints are still valid
+                If so we simply reallocate among the coord/specific node
+                If not we must contact all nodes, get all the values in the resolution set.
+
+        """
+        # Get a lock so only one resolution
+        self.resolveLock.acquire()
+
+        #outinfo("Checking resolve.\n")
+
+        violated_objects = data['violations']
+        topk = data['topk']
+        partials_at_node = data['partials']
+        topk_iter = data['topk_iter']
+
+        # Don't process any messages that refer to old data
+        if (self.topk_iter > topk_iter):
+            #outinfo("Data for %s out of date, removing.\n" % hn)
+            self.resolveLock.release()
+            return
+
+        # Set new stats so reallocation works properly        
+        self.setObjectStats(hn, data)
+
+        resolution_set = violated_objects
+        resolution_set.extend(topk)
+        #out.info("Resolution set: %s.\n" % resolution_set)
+
+
+        #out.info("checking if valid for host: %s.\n" % hn)
+        stillValid = self.validationTest(hn, violated_objects, topk, partials_at_node)
+        # Check if topk is valid, if not don't resolve
+       
+        if stillValid:
+            #outinfo("TOPK still valid, performing reallocation.\n")
+            self.performReallocation(res=resolution_set, host=hn, topkObjects=topk) 
+        else:
+            #outinfo("TOPK no longer valid, getting all partial objects.\n")
+            self.getSomePartials(hn, resolution_set)
+
+            # Blocking, will not complete until everything is completed
+            self.waitForResponses()
+            self.performReallocation(res=resolution_set, host=None, topkObjects=None) 
+
+
+        #outerr("TOPK OBJECTS: %s\n" % self.topk)
+        self.resolveLock.release()
+    #########################################################################################################
 
     #########################################################################################################
     #########################################################################################################
@@ -211,11 +272,9 @@ class Coordinator():
         elif (msgType == settings.MSG_CONST_VIOLATIONS):
             # Phase 2
             self.resolve(hn, msg['data'])
-
-        elif (msgType == 'getVals'):
-            # Request to get all current values at this node
-            # Simply send to the coordinator
-            self.getVals(hn, requestSock)
+        elif (msgType == settings.MSG_TEST_COMPLETE):
+            # Phase 2
+            self.setHostComplete(hn)
     #########################################################################################################
 
 
@@ -255,59 +314,6 @@ class Coordinator():
         self.coordVals['border'] = max_non_topk
     #########################################################################################################
 
-    #########################################################################################################
-    #########################################################################################################
-    def resolve(self, hn, data):
-        """
-            Perform the entire resolution.
-            Check if we all global constraints are still valid
-                If so we simply reallocate among the coord/specific node
-                If not we must contact all nodes, get all the values in the resolution set.
-
-        """
-        # Get a lock so only one resolution
-        self.resolveLock.acquire()
-
-        #outinfo("Checking resolve.\n")
-
-        violated_objects = data['violations']
-        topk = data['topk']
-        partials_at_node = data['partials']
-        topk_iter = data['topk_iter']
-
-        # Don't process any messages that refer to old data
-        if (self.topk_iter > topk_iter):
-            #outinfo("Data for %s out of date, removing.\n" % hn)
-            self.resolveLock.release()
-            return
-
-        # Set new stats so reallocation works properly        
-        self.setObjectStats(hn, data)
-
-        resolution_set = violated_objects
-        resolution_set.extend(topk)
-        #out.info("Resolution set: %s.\n" % resolution_set)
-
-
-        #out.info("checking if valid for host: %s.\n" % hn)
-        stillValid = self.validationTest(hn, violated_objects, topk, partials_at_node)
-        # Check if topk is valid, if not don't resolve
-       
-        if stillValid:
-            #outinfo("TOPK still valid, performing reallocation.\n")
-            self.performReallocation(res=resolution_set, host=hn, topkObjects=topk) 
-        else:
-            #outinfo("TOPK no longer valid, getting all partial objects.\n")
-            self.getSomePartials(hn, resolution_set)
-
-            # Blocking, will not complete until everything is completed
-            self.waitForResponses()
-            self.performReallocation(res=resolution_set, host=None, topkObjects=None) 
-
-
-        #outerr("TOPK OBJECTS: %s\n" % self.topk)
-        self.resolveLock.release()
-    #########################################################################################################
 
 
     #########################################################################################################
@@ -485,6 +491,18 @@ class Coordinator():
         self.dataLock.release()
 
     #########################################################################################################
+    
+    #########################################################################################################
+    #########################################################################################################
+    def setHostComplete(self, hn):
+        """
+            Says test complete at the node. 
+        """
+        self.dataLock.acquire()     
+        self.nodes[hn]['testComplete'] = True
+        self.dataLock.release()
+
+    #########################################################################################################
 
     #########################################################################################################
     #########################################################################################################
@@ -527,13 +545,12 @@ class Coordinator():
         
         self.F_node = (1.0 - self.F_coord) / len(self.nodes) 
 
-        self.resolveLock.acquire()
         
         for hn, node in self.nodes.iteritems():
             node['partials'] = {}
             node['border'] = 0
             node['F'] = self.F_node
-
+            node['testComplete'] = False
             node['waiting'] = True
             
             msg = {"msgType": settings.MSG_GET_OBJECT_COUNTS, 'hn': hn}
@@ -545,6 +562,7 @@ class Coordinator():
         self.coordVals['F'] = self.F_coord
        
  
+        self.resolveLock.acquire()
         #outinfo("Waiting for all responses to arrive.\n")
         # Will wait until all nodes have values
         self.waitForResponses()        

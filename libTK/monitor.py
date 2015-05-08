@@ -35,7 +35,7 @@ class Monitor():
  
         self.hn = hostname
         self.testname = testname
-        self.output_name = 'results/%s/%s.csv' % (outputname, self.hn)
+        self.output_name = '%s/%s.csv' % (outputname, self.hn)
 
         self.rollingWindow = deque()
         self.master_address = master_address
@@ -109,6 +109,9 @@ class Monitor():
                 if (self.dataIndex >= len(self.durations)):
                     # Exit if there are no durations left specified
                     #out.warn("No more distributions, exiting.\n")
+                    msg = {'msgType': settings.MSG_TEST_COMPLETE, 'hn': self.hn}
+                    comm.send_msg(self.master_address, msg) 
+                    
                     self.stopGen()
                     nextIter.cancel()
                 else:
@@ -123,19 +126,18 @@ class Monitor():
              
                     #out.err("Switching to the next distribution.\n")
     
-    def getAllPartialVals(self, srcIP):
+    def getAllPartialVals(self):
 
         self.valLock.acquire()
         nodeCopy = copy.deepcopy(self.node)
         self.valLock.release()
 
-        addr = (srcIP, settings.RECV_PORT)
         msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': nodeCopy, 'hn': self.hn}
 
-        comm.send_msg(addr, msg) 
+        comm.send_msg(self.master_address, msg) 
 
 
-    def getSomePartialVals(self, srcIP, whichVals):
+    def getSomePartialVals(self, whichVals):
         """ Needs to return partial values, along with the border value.
         """
 
@@ -152,10 +154,9 @@ class Monitor():
 
         sendData['border'] = self.findBorderVal(topkCopy, nodeCopy['partials'])
 
-        addr = (srcIP, settings.RECV_PORT)
         msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': sendData, 'hn': self.hn}
 
-        comm.send_msg(addr, msg) 
+        comm.send_msg(self.master_address, msg) 
 
 
     def checkWindow(self):
@@ -249,7 +250,6 @@ class Monitor():
         """
         #out.info("Node received message: %s\n" % msg)
         msgType = msg['msgType']
-        srcIP = requestSock.getpeername()[0]
         
         if   (msgType == settings.MSG_REQUEST_DATA):
             # From generator, request for a specific node should increment value by 1.
@@ -259,11 +259,11 @@ class Monitor():
             # Request to get all current values at this node
             # Simply send to the coordinator
             #out.info("Returning current object counts to coordinator.\n")
-            self.getAllPartialVals(srcIP)
+            self.getAllPartialVals()
         elif (msgType == settings.MSG_GET_SOME_OBJECT_COUNTS):
             #out.info("Returning some object counts to coordinator.\n")
             whichVals = msg['data']
-            self.getSomePartialVals(srcIP, whichVals)
+            self.getSomePartialVals(whichVals)
 
         elif (msgType == settings.MSG_SET_NODE_PARAMETERS):
             # Request to set the adjustment parameters for each object at this node
