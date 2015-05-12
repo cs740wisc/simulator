@@ -21,9 +21,6 @@ class Coordinator():
             Stores hostname 
             Contacts all nodes, gets all current object counts
         """
-
-        #outinfo("Instantiating coordinator class.\n")
-     
         # READ FILE to get hostnames, ips 
         self.ips = yaml.load(open(settings.FILE_SIMULATION_IPS, 'r'))
 
@@ -85,7 +82,7 @@ class Coordinator():
             self.output_list = []
             self.outputLock.release()
 
-            out.info("Outputting to file.\n")
+            #out.info("Outputting to file.\n")
             if len(rowsOut) > 0:
                 ##########################################
                 # SAVE THE INCOMING DATA TO A FILE        
@@ -176,21 +173,22 @@ class Coordinator():
         # Get a lock so only one resolution
         self.resolveLock.acquire()
 
-        #outinfo("Checking resolve.\n")
 
         violated_objects = data['violations']
         topk = data['topk']
-        partials_at_node = data['partials']
         topk_iter = data['topk_iter']
-
-        # Don't process any messages that refer to old data
-        if (self.topk_iter > topk_iter):
-            #outinfo("Data for %s out of date, removing.\n" % hn)
-            self.resolveLock.release()
-            return
+        
+        out.info("Checking resolve for %s\nViolated: %s.\n" % (hn, violated_objects))
 
         # Set new stats so reallocation works properly        
         self.setObjectStats(hn, data)
+        
+
+        # Don't process any messages that refer to old data
+        if (self.topk_iter > topk_iter):
+            out.warn("Data for %s out of date, removing.\n" % hn)
+            self.resolveLock.release()
+            return
 
         resolution_set = violated_objects
         resolution_set.extend(topk)
@@ -198,14 +196,14 @@ class Coordinator():
 
 
         #out.info("checking if valid for host: %s.\n" % hn)
-        stillValid = self.validationTest(hn, violated_objects, topk, partials_at_node)
+        stillValid = self.validationTest(hn, violated_objects, topk)
         # Check if topk is valid, if not don't resolve
        
         if stillValid:
-            #outinfo("TOPK still valid, performing reallocation.\n")
+            out.info("TOPK still valid, performing reallocation.\n")
             self.performReallocation(res=resolution_set, host=hn, topkObjects=topk) 
         else:
-            #outinfo("TOPK no longer valid, getting all partial objects.\n")
+            out.warn("TOPK no longer valid, getting all partial objects.\n")
             self.getSomePartials(hn, resolution_set)
 
             # Blocking, will not complete until everything is completed
@@ -213,15 +211,16 @@ class Coordinator():
             self.performReallocation(res=resolution_set, host=None, topkObjects=None) 
 
 
-        #outerr("TOPK OBJECTS: %s\n" % self.topk)
+        out.info("NEW TOPK OBJECTS: %s\n" % self.topk)
         self.resolveLock.release()
     #########################################################################################################
 
     #########################################################################################################
     #########################################################################################################
-    def validationTest(self, hn, violated_objects, topk, partials_at_node):
+    def validationTest(self, hn, violated_objects, topk):
         """
         """
+        partials_at_node = self.nodes[hn]['partials']
         for top_obj in topk:
             # a, b, c
             for obj in violated_objects:
@@ -237,6 +236,7 @@ class Coordinator():
                 coord_param_topk = self.coordVals['partials'][top_obj]['param']
 
                 if (partial_val['val'] + partial_val['param'] + coord_param > partial_val_topk['val'] + partial_val_topk['param'] + coord_param_topk):
+                    out.warn("Detected violation: %s violates top-k object: %s.\n" % (obj, top_obj))
                     # If any violated global totals are greater than any top k totals, we must do reallocation
                     return False
 

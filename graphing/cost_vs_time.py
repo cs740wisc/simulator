@@ -45,7 +45,7 @@ def graph(topk_data):
               
 
         colorVal = scalarMap.to_rgba(index)
-        plt.plot(times, totalCost, '.-', color=colorVal, label='topk, ep=%s' % ep)
+        plt.plot(times, totalCost, '.-', color=colorVal, label='topk, ep=%s' % int(ep))
         index += 1
 
 
