@@ -234,7 +234,6 @@ class Coordinator():
             sums[o] = self.coordVals['partials'][o]['param']
 
         for hn, node in self.nodes.iteritems():
-            print("node: %s" % node)
             for o in objs:
                 sums[o] += node['partials'][o]['param']
 
@@ -288,7 +287,7 @@ class Coordinator():
 
  
         """
-        #outwarn("RECV_MSG: %s\n" % msg)
+        out.warn("RECV_MSG: %s\n" % msg)
 
         msgType = msg['msgType']
         hn = msg['hn']
@@ -324,11 +323,11 @@ class Coordinator():
     
     #########################################################################################################
     #########################################################################################################
-    def setBorderVal(self):
+    def setBorderVal(self, res):
         # Compute Border Value B for this node
         # min adjusted value among topk items
 
-        if len(self.topk) == 0:
+        if (res == None):
             self.coordVals['border'] = 0.0
             return
 
@@ -336,13 +335,17 @@ class Coordinator():
         partials = self.coordVals['partials']
 
         # Max adjusted value among non top k items
-        max_non_topk = 0
+        max_non_res = -100000
         for obj in partials.keys():
-            if obj not in self.topk:
-                if(partials[obj]['param'] > max_non_topk):
-                    max_non_topk = partials[obj]['param']
+            print("obj: %s"  % obj)
+            if obj not in res:
+                print("partials: %s"  % partials[obj]['param'])
+                print("max_non_topk: %s"  % max_non_res)
+                if(partials[obj]['param'] > max_non_res):
+                    max_non_res = partials[obj]['param']
 
-        self.coordVals['border'] = max_non_topk
+        out.info("setting border: %s.\n" % max_non_res)
+        self.coordVals['border'] = max_non_res
     #########################################################################################################
 
 
@@ -355,12 +358,10 @@ class Coordinator():
 
         try:
 
-
             if (topkObjects):
                 setTopK = False
             else:
                 setTopK = True
-
 
             participatingSum = {}
             borderSum = 0
@@ -393,15 +394,18 @@ class Coordinator():
 
             #out.info("2\n")
             ###########################################################################
-            self.setBorderVal()
             #out.info("3\n")
-                
+            
+            
+            self.setBorderVal(res)
             # TODO add the max of the adjustment params at the coordinator not in resolution set
             borderSum += self.coordVals['border']
     
-            #out.info("Participating sum: %s.\n" % participatingSum)
-            #out.info("Aggregate sum: %s.\n" % aggregateSum)
-            #out.info("Border sum: %s.\n" % borderSum)
+            out.info("Participating sum: %s.\n" % participatingSum)
+            out.info("Aggregate sum: %s.\n" % aggregateSum)
+            out.info("Border sum: %s.\n" % borderSum)
+            out.err("Host h1: %s\n" % self.nodes['h1'])
+            out.err("coord: %s\n" % self.coordVals)
 
             ###################################################
             # SORT TO GET TOP K
@@ -421,12 +425,12 @@ class Coordinator():
             
             for o in res:
                 # If the object is in the top k set, we need to include epsilon
-                leeway[o] = participatingSum[o] - borderSum + self.epsilon
+                leeway[o] = participatingSum[o] - borderSum
                 if (o in topkObjects): 
                     leeway[o] += self.epsilon
     
     
-            #out.info("leeway: %s.\n" % leeway)
+            out.info("leeway: %s.\n" % leeway)
     
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS
@@ -458,7 +462,11 @@ class Coordinator():
                 self.coordVals['partials'][o]['param'] = border - partialVal + allocLeeway
                 if (o in topkObjects):
                     self.coordVals['partials'][o]['param'] -= self.epsilon
- 
+
+
+            out.err("Host h1: %s\n" % self.nodes['h1'])
+            out.err("coord: %s\n" % self.coordVals)
+              
             #out.info("5\n")
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
             if (setTopK):    
@@ -497,6 +505,7 @@ class Coordinator():
             # Iterate through nodes, make sure all have responded
             for hn, node in self.nodes.iteritems():
                 if (node['waiting']):
+                    out.info("node: %s\n" % hn)
                     waiting = True
 
             # If we are no longer waiting on any nodes return
@@ -514,7 +523,7 @@ class Coordinator():
             Updates the initial values at node hn. 
         """
         # TODO - use a copy of nodes so we can handle a resolution set that isn't everything
-        #outinfo("Setting object stats for host: %s\n" % hn)
+        out.info("Setting object stats for host: %s\n" % hn)
         self.dataLock.acquire()     
         self.nodes[hn]['border'] = data['border']
         self.nodes[hn]['waiting'] = False
@@ -600,10 +609,60 @@ class Coordinator():
         self.waitForResponses()        
         
         #outinfo("Responses arrived, performing reallocation.\n")
+        # NEED TO CALCULATE TOP K SO WE CAN ASSIGN CORRECT BORDER VALUES
+        self.fixInitBorderVals() 
 
         self.performReallocation()
 
+        self.verifyVals()
         #outinfo("Initial reallocation complete.\n")
         self.resolveLock.release()
 
     #########################################################################################################
+
+
+
+    #########################################################################################################
+    #########################################################################################################
+    def fixInitBorderVals(self):
+        hns = self.nodes.keys()
+        aggregateSum = {}
+
+        for hn in hns:
+            node = self.nodes[hn]
+            for key, info in node['partials'].iteritems():
+                if key in aggregateSum:
+                    aggregateSum[key] += info['val']
+                else:
+                    aggregateSum[key] = info['val']
+
+        # SORT TO GET TOP-K
+        sortedVals = self.sortVals(aggregateSum)
+        topkObjects = [a[0] for a in sortedVals[0:self.k]]
+        res = [a[0] for a in sortedVals]
+        for hn in hns:
+            node = self.nodes[hn]
+            # Compute Border Value B for this node
+            # min adjusted value among topk items
+            min_topk = 0.0  
+            firstMin = True  
+            partialCopy = node['partials']
+            for obj in topkObjects:
+                if(firstMin or ((partialCopy[obj]['val'] + partialCopy[obj]['param']) < min_topk)):
+                    min_topk = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
+                    firstMin = False
+
+            firstMax = True
+            # Max adjusted value among non top k items
+            max_non_res = 0.0
+            for obj in partialCopy.keys():
+                if obj not in res:
+                    if(firstMax or ((partialCopy[obj]['val'] + partialCopy[obj]['param']) > max_non_res)):
+                        max_non_res = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
+                        firstMax = False
+
+            border_value = min(min_topk, max_non_res)
+            node['border'] = border_value
+
+    #########################################################################################################
+    

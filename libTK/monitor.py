@@ -84,7 +84,7 @@ class Monitor():
     def stopGen(self):
         self.gen = False
         self.waiting = False
-	self.running = False
+        self.running = False
 
     def startGen(self):
         self.gen = True
@@ -152,8 +152,9 @@ class Monitor():
             if (w in nodeCopy['partials']):
                 sendData['partials'][w] = nodeCopy['partials'][w]
 
-        sendData['border'] = self.findBorderVal(topkCopy, nodeCopy['partials'])
+        sendData['border'] = self.findBorderVal(whichVals, topkCopy, nodeCopy['partials'])
 
+        print("here")
         msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': sendData, 'hn': self.hn}
 
         comm.send_msg(self.master_address, msg) 
@@ -314,31 +315,40 @@ class Monitor():
             sendData['partials'][obj] = partialCopy[obj]
             
 
-        sendData['border'] = self.findBorderVal(topkCopy, partialCopy)
+        resolution_set = violated_objects
+        resolution_set.extend(topkCopy)
+        sendData['border'] = self.findBorderVal(resolution_set, topkCopy, partialCopy)
 
-       
         #out.warn("Send violated constraints.\n")
         #out.warn("%s\n" % sendData)
  
         msg = {"msgType" : settings.MSG_CONST_VIOLATIONS, 'hn': self.hn, 'data' : sendData}
         comm.send_msg(self.master_address, msg)
 
-    def findBorderVal(self, topkCopy, partialCopy):
+    def findBorderVal(self, res, topkCopy, partialCopy):
         # Compute Border Value B for this node
         # min adjusted value among topk items
-        min_topk = 10000    
+        print("partialCopy: %s" % partialCopy)
+        min_topk = 0.0
+        firstMin = True 
         for obj in topkCopy:
-            if((partialCopy[obj]['val'] + partialCopy[obj]['param']) < min_topk):
+            if(firstMin or ((partialCopy[obj]['val'] + partialCopy[obj]['param']) < min_topk)):
+                print("obj: %s" % obj)
                 min_topk = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
+                firstMin = False
 
         # Max adjusted value among non top k items
-        max_non_topk = 0
+        firstMax = True
+        max_non_res = 0.0
         for obj in partialCopy.keys():
-            if obj not in topkCopy:
-                if((partialCopy[obj]['val'] + partialCopy[obj]['param']) > max_non_topk):
-                    max_non_topk = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
+            if obj not in res:
+                if(firstMax or ((partialCopy[obj]['val'] + partialCopy[obj]['param']) > max_non_res)):
+                    print("obj1: %s" % obj)
+                    max_non_res = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
+                    firstMax = False
 
-        border_value = min(min_topk, max_non_topk)
+        print("returning")
+        border_value = min(min_topk, max_non_res)
         return border_value
 
     def setWaitingConstraints(self):
@@ -385,6 +395,8 @@ class Monitor():
                     if(partialCopy[top_obj]['val'] + partialCopy[top_obj]['param'] < partialCopy[obj]['val'] + partialCopy[obj]['param']):
                         violated_objects.append(obj)
                         # sendConstraintViolation(self.node['partials'][top_obj])
+        
+
         if(len(violated_objects) > 0):
             violated_objects = list(set(violated_objects))
             out.warn("Detected violated objects: %s\n" % violated_objects)
@@ -394,7 +406,7 @@ class Monitor():
             self.waitOnConstraints()
 
 
-	if (self.running):
-	    # don't schedule next thread until we have completed resolving
-	    paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
-	    paramsChecker.start() 
+        if (self.running):
+            # don't schedule next thread until we have completed resolving
+            paramsChecker = threading.Timer(1.0/self.perSecond, self.checkParams)
+            paramsChecker.start() 
