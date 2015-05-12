@@ -212,8 +212,39 @@ class Coordinator():
 
 
         out.info("NEW TOPK OBJECTS: %s\n" % self.topk)
+        #out.info("node: %s\n" % self.nodes)
+        #out.info("coord: %s\n" % self.coordVals)
+
+
+        self.verifyVals()
         self.resolveLock.release()
     #########################################################################################################
+
+
+    #########################################################################################################
+    #########################################################################################################
+    def verifyVals(self):
+        """ CHECKS TO SEE IF INVARIANTS ACTUALLY HOLD
+        """
+        objs = self.coordVals['partials'].keys()
+
+        sums = {}
+
+        for o in objs:
+            sums[o] = self.coordVals['partials'][o]['param']
+
+        for hn, node in self.nodes.iteritems():
+            print("node: %s" % node)
+            for o in objs:
+                sums[o] += node['partials'][o]['param']
+
+        print("SUMS: %s" % sums)
+
+    #########################################################################################################
+    
+
+
+
 
     #########################################################################################################
     #########################################################################################################
@@ -381,7 +412,7 @@ class Coordinator():
                 topkObjects = [a[0] for a in sortedVals[0:self.k]]
                 self.topk = topkObjects
 
-            #out.info("res: %s.\n" % res)
+            out.info("res: %s.\n" % res)
             #out.info("topkObjects: %s.\n" % topkObjects)
 
             ####################################################
@@ -485,9 +516,10 @@ class Coordinator():
         # TODO - use a copy of nodes so we can handle a resolution set that isn't everything
         #outinfo("Setting object stats for host: %s\n" % hn)
         self.dataLock.acquire()     
-        self.nodes[hn]['partials'] = data['partials']
         self.nodes[hn]['border'] = data['border']
         self.nodes[hn]['waiting'] = False
+        for obj, info in data['partials'].iteritems():
+            self.nodes[hn]['partials'][obj] = info
         self.dataLock.release()
 
     #########################################################################################################
