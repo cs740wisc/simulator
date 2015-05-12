@@ -62,7 +62,11 @@ class Monitor():
             Assumes that each key will default to generating at 1 val per second
         """
         testSpec = json.load(open('genData/%s.txt' % self.testname, 'r'))
+        out.info("testSpec: %s\n" % testSpec) 
+        out.info("hn: %s\n" % self.hn) 
         self.nodeDistribution = testSpec[self.hn]
+        out.info("nodeDistribution: %s\n" % self.nodeDistribution) 
+
 
         self.data = [[0 for col in range(25)] for row in range(len(self.nodeDistribution))]
         # Assume 10 seconds if not mentioned
@@ -73,7 +77,7 @@ class Monitor():
             self.durations[i] = d.get('duration', 10)
             
         #out.info("Data initialized: %s\n" % self.data)
-        #out.info("Durations initialize: %s\n" % self.durations) 
+        out.info("Durations initialize: %s\n" % self.durations) 
  
         self.dataIndex = 0
         self.dataTicks = 0
@@ -124,7 +128,7 @@ class Monitor():
                     writer.writerow(outrow)
                     f.close()
              
-                    #out.err("Switching to the next distribution.\n")
+                    out.err("Switching to the next distribution.\n")
     
     def getAllPartialVals(self):
 
@@ -154,7 +158,6 @@ class Monitor():
 
         sendData['border'] = self.findBorderVal(whichVals, topkCopy, nodeCopy['partials'])
 
-        print("here")
         msg = {'msgType': settings.MSG_GET_OBJECT_COUNTS_RESPONSE, 'data': sendData, 'hn': self.hn}
 
         comm.send_msg(self.master_address, msg) 
@@ -328,12 +331,12 @@ class Monitor():
     def findBorderVal(self, res, topkCopy, partialCopy):
         # Compute Border Value B for this node
         # min adjusted value among topk items
-        print("partialCopy: %s" % partialCopy)
+        #print("partialCopy: %s" % partialCopy)
         min_topk = 0.0
         firstMin = True 
         for obj in topkCopy:
             if(firstMin or ((partialCopy[obj]['val'] + partialCopy[obj]['param']) < min_topk)):
-                print("obj: %s" % obj)
+                #print("obj: %s" % obj)
                 min_topk = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
                 firstMin = False
 
@@ -343,11 +346,10 @@ class Monitor():
         for obj in partialCopy.keys():
             if obj not in res:
                 if(firstMax or ((partialCopy[obj]['val'] + partialCopy[obj]['param']) > max_non_res)):
-                    print("obj1: %s" % obj)
+                    #print("obj1: %s" % obj)
                     max_non_res = (partialCopy[obj]['val']) + (partialCopy[obj]['param'])
                     firstMax = False
 
-        print("returning")
         border_value = min(min_topk, max_non_res)
         return border_value
 
@@ -400,7 +402,7 @@ class Monitor():
         if(len(violated_objects) > 0):
             violated_objects = list(set(violated_objects))
             out.warn("Detected violated objects: %s\n" % violated_objects)
-            out.warn("partials: %s\n" % partialCopy)
+            #out.warn("partials: %s\n" % partialCopy)
             self.setWaitingConstraints()
             self.sendConstraintViolation(violated_objects, partialCopy, topkCopy, topk_iterCopy)
             self.waitOnConstraints()

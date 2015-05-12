@@ -216,7 +216,7 @@ class Coordinator():
         #out.info("coord: %s\n" % self.coordVals)
 
 
-        self.verifyVals()
+        #self.verifyVals()
         self.resolveLock.release()
     #########################################################################################################
 
@@ -287,7 +287,7 @@ class Coordinator():
 
  
         """
-        out.warn("RECV_MSG: %s\n" % msg)
+        #out.warn("RECV_MSG: %s\n" % msg)
 
         msgType = msg['msgType']
         hn = msg['hn']
@@ -337,10 +337,7 @@ class Coordinator():
         # Max adjusted value among non top k items
         max_non_res = -100000
         for obj in partials.keys():
-            print("obj: %s"  % obj)
             if obj not in res:
-                print("partials: %s"  % partials[obj]['param'])
-                print("max_non_topk: %s"  % max_non_res)
                 if(partials[obj]['param'] > max_non_res):
                     max_non_res = partials[obj]['param']
 
@@ -378,6 +375,7 @@ class Coordinator():
             #out.info("1\n")
             for hn in hns:
                 node = self.nodes[hn]
+            
                 borderSum += node['border']
                 for key, info in node['partials'].iteritems():
                     if (res is not None and key not in res):
@@ -398,14 +396,31 @@ class Coordinator():
             
             
             self.setBorderVal(res)
-            # TODO add the max of the adjustment params at the coordinator not in resolution set
+
+            
+            # Calculate correct border value at coordinator
             borderSum += self.coordVals['border']
+            # Add coordinator adjustment factors to participatingSum
+            for key, info in self.coordVals['partials'].iteritems():
+                if (res is not None and key not in res):
+                    #out.warn("REALLOC: skipping object %s.\n" % key)
+                    continue
+
+                # We have already seen key, just add to this key
+                if key in participatingSum:
+                    participatingSum[key] += info['val'] + info['param']
+                    aggregateSum[key] += info['val']
+                else:
+                    participatingSum[key] = info['val'] + info['param']
+                    aggregateSum[key] = info['val']
+
+
     
-            out.info("Participating sum: %s.\n" % participatingSum)
-            out.info("Aggregate sum: %s.\n" % aggregateSum)
-            out.info("Border sum: %s.\n" % borderSum)
-            out.err("Host h1: %s\n" % self.nodes['h1'])
-            out.err("coord: %s\n" % self.coordVals)
+            #out.info("Participating sum: %s.\n" % participatingSum)
+            #out.info("Aggregate sum: %s.\n" % aggregateSum)
+            #out.info("Border sum: %s.\n" % borderSum)
+            #out.err("Host h1: %s\n" % self.nodes['h1'])
+            #out.err("coord: %s\n" % self.coordVals)
 
             ###################################################
             # SORT TO GET TOP K
@@ -416,7 +431,7 @@ class Coordinator():
                 topkObjects = [a[0] for a in sortedVals[0:self.k]]
                 self.topk = topkObjects
 
-            out.info("res: %s.\n" % res)
+            #out.info("res: %s.\n" % res)
             #out.info("topkObjects: %s.\n" % topkObjects)
 
             ####################################################
@@ -430,7 +445,7 @@ class Coordinator():
                     leeway[o] += self.epsilon
     
     
-            out.info("leeway: %s.\n" % leeway)
+            #out.info("leeway: %s.\n" % leeway)
     
             #####################################################
             # ASSIGN ADJUSTMENT FACTORS
@@ -445,8 +460,9 @@ class Coordinator():
                     partialVal = node['partials'][o]['val']
 
                     allocLeeway = node['F']*leeway[o]
- 
+
                     node['partials'][o]['param'] = border - partialVal + allocLeeway
+                #out.err("Host: %s\npartials: %s\nborder: %s\n" % (hn, node['partials'], border))
            
             #out.info("4\n")
             #####################################################
@@ -464,8 +480,7 @@ class Coordinator():
                     self.coordVals['partials'][o]['param'] -= self.epsilon
 
 
-            out.err("Host h1: %s\n" % self.nodes['h1'])
-            out.err("coord: %s\n" % self.coordVals)
+            #out.err("coord: %s\n" % self.coordVals)
               
             #out.info("5\n")
             ## Top k now determined, send message to each of the nodes with top k set and adjustment factors
@@ -505,7 +520,7 @@ class Coordinator():
             # Iterate through nodes, make sure all have responded
             for hn, node in self.nodes.iteritems():
                 if (node['waiting']):
-                    out.info("node: %s\n" % hn)
+                    #out.info("node: %s\n" % hn)
                     waiting = True
 
             # If we are no longer waiting on any nodes return
@@ -523,8 +538,9 @@ class Coordinator():
             Updates the initial values at node hn. 
         """
         # TODO - use a copy of nodes so we can handle a resolution set that isn't everything
-        out.info("Setting object stats for host: %s\n" % hn)
+        #out.info("Setting object stats for host: %s\n" % hn)
         self.dataLock.acquire()     
+
         self.nodes[hn]['border'] = data['border']
         self.nodes[hn]['waiting'] = False
         for obj, info in data['partials'].iteritems():
@@ -614,7 +630,6 @@ class Coordinator():
 
         self.performReallocation()
 
-        self.verifyVals()
         #outinfo("Initial reallocation complete.\n")
         self.resolveLock.release()
 
