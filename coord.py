@@ -40,6 +40,7 @@ def setupArgParse():
     p.add_argument('-d', '--nodeport', help='Port to send to nodes', type=int, default=10000)
     p.add_argument('-t', '--testname', help='Name of the test to run', type=str, default='same')
     p.add_argument('-o', '--outputname', help='Name of the directory to output to', type=str, default='same')
+    p.add_argument('-b', '--bandwidth', help='Target bandwidth', type=int, default=0)
     return p
 
 
@@ -52,7 +53,7 @@ if (__name__ == "__main__"):
     # Port 0 means to select an arbitrary unused port
 
     # Get current top-k queries
-    coord = coordinator.Coordinator(args.topk, args.epsilon, args.nodeport, args.testname, args.outputname)
+    coord = coordinator.Coordinator(args.topk, args.epsilon, args.bandwidth, args.nodeport, args.testname, args.outputname)
     
     server = ThreadedTCPServer((args.masterip, args.masterport), ThreadedTCPRequestHandler, coord)
     ip, port = server.server_address

@@ -47,7 +47,7 @@ def saveNodesToFile(net, numnodes):
 
 
 
-def startScreens(net, numnodes, ips, nodeport, masterport, topk, epsilon, testname, outputname):
+def startScreens(net, numnodes, ips, nodeport, masterport, topk, epsilon, bandwidth, testname, outputname):
     # Start the screens on each machine
     for i in range(numnodes):
 
@@ -61,7 +61,7 @@ def startScreens(net, numnodes, ips, nodeport, masterport, topk, epsilon, testna
     cstr = 'c0'
     c = net.get(cstr)
     # Start the coordinator machine
-    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --epsilon %s --nodeport %s --testname %s --outputname %s' % (masterport, ips['coords']['c0']['ip'], topk, epsilon, nodeport, testname, outputname)
+    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --epsilon %s --bandwidth %s --nodeport %s --testname %s --outputname %s' % (masterport, ips['coords']['c0']['ip'], topk, epsilon, bandwidth, nodeport, testname, outputname)
     print(runCmd)
     c.cmd(runCmd)
 
@@ -79,7 +79,7 @@ def stopScreens(net, numnodes):
     # Start the coordinator machine
     c.cmd(killCmd)
 
-def simpleTest(topk, epsilon, nodes, nodeport, masterport, testname, outputname):
+def simpleTest(topk, epsilon, bandwidth, nodes, nodeport, masterport, testname, outputname):
     "Create and test a simple network"
     topo = SingleSwitchTopo(nodes)
     net = Mininet(topo)
@@ -91,7 +91,7 @@ def simpleTest(topk, epsilon, nodes, nodeport, masterport, testname, outputname)
  
     ips = saveNodesToFile(net, nodes)
 
-    startScreens(net, nodes, ips, nodeport, masterport, topk, epsilon, testname, outputloc)
+    startScreens(net, nodes, ips, nodeport, masterport, topk, epsilon, bandwidth, testname, outputloc)
  
     CLI(net)
 
@@ -108,7 +108,7 @@ def setupArgParse():
     p.add_argument('-p', '--masterport', help='Port of the master node.', type=int, default=11000)
     p.add_argument('-t', '--testname', help='Test data to select from.', type=str, default='same')
     p.add_argument('-o', '--outputname', help='Location to output test data to.', type=str, default='test')
-
+    p.add_argument('-b', '--bandwidth', help='Target bandwidth (bytes/second) to use total.', type=int, default=0)
     return p
 
 if __name__ == '__main__':
@@ -118,4 +118,4 @@ if __name__ == '__main__':
 
     # Tell mininet to print useful information
     setLogLevel('info')
-    simpleTest(args.topk, args.epsilon, args.nodes, args.nodeport, args.masterport, args.testname, args.outputname)
+    simpleTest(args.topk, args.epsilon, args.bandwidth, args.nodes, args.nodeport, args.masterport, args.testname, args.outputname)

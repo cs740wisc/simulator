@@ -16,7 +16,7 @@ class Coordinator():
 
     """
 
-    def __init__(self, k, epsilon, nodeport, testname, outputname):
+    def __init__(self, k, epsilon, bandwidth, nodeport, testname, outputname):
         """ Receives number of nodes.
             Looks up based on hostname to find all ip addresses
             Stores hostname 
@@ -35,7 +35,24 @@ class Coordinator():
         self.k = k
         self.topk_iter = 0
         self.topk = []
-         
+
+
+        # VARIABLE EPSILON CHANGES
+        self.targetBandwidth = float(bandwidth)
+        self.alpha = 0.8
+        self.estBandwidth = float(bandwidth)
+        self.timeBetweenAdjusts = 10.0
+        if (bandwidth == 0):
+            self.useBandwidth = False
+        else:
+            self.useBandwidth = True
+            # need to set so we can multiply/divide
+            self.epsilon = 10.0
+        self.bandwidth_list = []
+        self.prev_band_time = 0.0
+        self.epsilonAdjuster = threading.Thread(target=self.adjustEpsilon)
+
+
         self.running = True
         
         self.results_path = '%s/c0.csv' % outputname
@@ -53,6 +70,9 @@ class Coordinator():
         self.dataLock = threading.Lock()
         self.resolveLock = threading.Lock()
         self.outputLock = threading.Lock()
+        self.bandwidthLock = threading.Lock()
+        self.epsilonLock = threading.Lock()
+
 
         #############################################################
         # THREADS
@@ -65,7 +85,7 @@ class Coordinator():
         # we need a bunch of simultaneous threads for proper operation
         output_thread = threading.Thread(target=self.outputData)
         output_thread.start()
-         
+        
         # Wait for 10 seconds for enough data to be generated
         time.sleep(3)
 
@@ -73,6 +93,56 @@ class Coordinator():
         initial_resolve_thread = threading.Thread(target=self.performInitialResolution)
         initial_resolve_thread.start()
 
+    #########################################################################################################
+    #########################################################################################################
+    def adjustEpsilon(self):
+        while (self.running):
+            self.bandwidthLock.acquire()
+            bandwidth_msgs = copy.deepcopy(self.bandwidth_list)
+            self.bandwidth_list = []
+            self.bandwidthLock.release()
+
+            out.info("______________________________________\n")
+            currtime = time.time()
+            totalBytes = 0
+            for msg in bandwidth_msgs:
+                totalBytes += sys.getsizeof(json2str(msg))
+
+            if (self.prev_band_time != 0.0):
+                # TODO - react more quickly by factoring in difference between old est and new est
+                out.info("oldEstBandwidth: %s.\n" % self.estBandwidth)
+                diff_time = currtime - self.prev_band_time
+                new_band = totalBytes / diff_time
+                out.info("instBandwidth: %s.\n" % new_band)
+                diff_band = new_band - self.estBandwidth
+                self.estBandwidth += diff_band * self.alpha
+                out.info("newEstBandwidth: %s.\n" % self.estBandwidth)
+
+                self.epsilonLock.acquire()
+                # Increase or decrease epsilon multiplicatively so we try to adjust bandwidth
+                # First try: adjust by the percent difference from ideal
+                if (self.estBandwidth > self.targetBandwidth):
+                    # We need to cut down on bandwidth, target will be less than est
+                    # So want to make epsilon bigger
+                    self.epsilon *= self.estBandwidth/self.targetBandwidth
+                else:
+                    # We can add bandwidth and make more accurate
+                    # So want to make epsilon smaller
+                    if (self.epsilon >= 0.5):                    
+                        self.epsilon *=  self.estBandwidth/self.targetBandwidth
+
+                self.epsilonLock.release()      
+                out.info("epsilon: %s.\n" % self.epsilon)
+ 
+            self.prev_band_time = currtime 
+            out.info("______________________________________\n")
+
+            time.sleep(self.timeBetweenAdjusts)
+        
+
+
+    #########################################################################################################
+    
 
     #########################################################################################################
     #########################################################################################################
@@ -83,10 +153,8 @@ class Coordinator():
             self.output_list = []
             self.outputLock.release()
 
-            out.info("rowsOut: %s.\n" % rowsOut)
             formattedRows = []
             for r in rowsOut:
-                out.info("r: %s.\n" % r)
                 currtime = r[0]
                 send_rcv = r[1]
                 msg = r[2]
@@ -149,12 +217,24 @@ class Coordinator():
     
     #########################################################################################################
     #########################################################################################################
+    def addToBand(self, msg):
+        currtime = time.time
+        self.bandwidthLock.acquire()
+        self.bandwidth_list.append(msg)
+        self.bandwidthLock.release()
+    #########################################################################################################
+    
+
+
+    #########################################################################################################
+    #########################################################################################################
     def send_msg(self, addr, msg):
         currtime = time.time()
         #out.warn("msg: %s\n" % msg)
         outrow = [currtime, 'send', msg]
     
         self.addToOut(outrow)
+        self.addToBand(msg)
         comm.send_msg(addr, msg)    
     #########################################################################################################
 
@@ -309,6 +389,7 @@ class Coordinator():
         currtime = time.time()
         outrow = [currtime, 'recv', msg]
         self.addToOut(outrow)
+        self.addToBand(msg)
 
         if   (msgType == settings.MSG_GET_OBJECT_COUNTS_RESPONSE):
             # From generator, request for a specific node should increment value by 1.
@@ -448,6 +529,7 @@ class Coordinator():
             #out.info("res: %s.\n" % res)
             #out.info("topkObjects: %s.\n" % topkObjects)
 
+            self.epsilonLock.acquire()
             ####################################################
             # CALCULATE LEEWAY
             leeway = {}
@@ -493,6 +575,7 @@ class Coordinator():
                 if (o in topkObjects):
                     self.coordVals['partials'][o]['param'] -= self.epsilon
 
+            self.epsilonLock.release()
 
             #out.err("coord: %s\n" % self.coordVals)
               
@@ -647,6 +730,9 @@ class Coordinator():
         #outinfo("Initial reallocation complete.\n")
         self.resolveLock.release()
 
+        # We can start tracking the bandwidth now if necessary
+        if self.useBandwidth:
+            self.epsilonAdjuster.start()
     #########################################################################################################
 
 

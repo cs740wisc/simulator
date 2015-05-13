@@ -56,6 +56,10 @@ def graph(topk_data):
         index += 1
 
 
+
+    
+    plt.plot([0, 220], [0, 400000], '.-', color='r', label='constant communication')
+
     # TODO add extra plot for the mapreduce style
 
     plt.title('Communication Cost vs Time, Varying Epsilon')
