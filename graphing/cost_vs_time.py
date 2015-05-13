@@ -7,6 +7,11 @@ import numpy as np
 import argparse
 import json
 import csv
+def toInt(tup):
+    key, val = tup
+    return int(key.split('_')[-1]), val
+
+
 def graph(topk_data):
     index = 0
 
@@ -17,7 +22,8 @@ def graph(topk_data):
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=winter)
     
 
-    for ep, data in topk_data.iteritems():
+    sorted_topk = iter(sorted(topk_data.items(), key=toInt))
+    for ep, data in sorted_topk:
         times = []
         totalCost = []
         totalBytes = 0 
@@ -25,7 +31,8 @@ def graph(topk_data):
         print("ep: %s" % ep)
         print("index: %s" % index)
         for i in data:
-            (time, send_rcv, host, msgType) = i
+            print("i: %s" % i)
+            (time, send_rcv, host, msgType, numBytes) = i
             time = float(time)
             if (send_rcv == 'STARTTEST'):
                 print("foundStartTime: %s" % time)
@@ -37,7 +44,7 @@ def graph(topk_data):
             elif (msgType == 'testComplete'):
                 continue
             else:
-                totalBytes += 1
+                totalBytes += int(numBytes)
                
             currtime = time - starttime
             times.append(currtime)

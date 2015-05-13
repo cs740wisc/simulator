@@ -7,6 +7,7 @@ import time
 import copy
 import operator
 import csv
+import sys
 
 class Coordinator():
     """
@@ -82,13 +83,26 @@ class Coordinator():
             self.output_list = []
             self.outputLock.release()
 
+            out.info("rowsOut: %s.\n" % rowsOut)
+            formattedRows = []
+            for r in rowsOut:
+                out.info("r: %s.\n" % r)
+                currtime = r[0]
+                send_rcv = r[1]
+                msg = r[2]
+                hn = msg.get("hn", "None")
+                msgType = msg.get("msgType", "None")
+                size = sys.getsizeof(json2str(msg))
+                formattedRows.append([currtime, send_rcv, hn, msgType, size])
+
+
             #out.info("Outputting to file.\n")
-            if len(rowsOut) > 0:
+            if len(formattedRows) > 0:
                 ##########################################
                 # SAVE THE INCOMING DATA TO A FILE        
                 f = open(self.results_path, 'ab+')
                 writer = csv.writer(f)
-                writer.writerows(rowsOut)            
+                writer.writerows(formattedRows)            
                 f.close()
                 ##########################################
             
@@ -103,7 +117,7 @@ class Coordinator():
                 # We should have completed everything, so output a final row to the file and exit
                 ##########################################
                 #outwarn("Reached duration, exiting.\n")
-                outrow = [currtime, 'STOPTEST', 'None', 'None']
+                outrow = [currtime, 'STOPTEST', "None", "None", "None"]
                 f = open(self.results_path, 'ab+')
                 writer = csv.writer(f)
                 writer.writerow(outrow)            
@@ -138,7 +152,7 @@ class Coordinator():
     def send_msg(self, addr, msg):
         currtime = time.time()
         #out.warn("msg: %s\n" % msg)
-        outrow = [currtime, 'send', msg['hn'], msg['msgType']]
+        outrow = [currtime, 'send', msg]
     
         self.addToOut(outrow)
         comm.send_msg(addr, msg)    
@@ -293,7 +307,7 @@ class Coordinator():
         hn = msg['hn']
 
         currtime = time.time()
-        outrow = [currtime, 'recv', msg['hn'], msg['msgType']]
+        outrow = [currtime, 'recv', msg]
         self.addToOut(outrow)
 
         if   (msgType == settings.MSG_GET_OBJECT_COUNTS_RESPONSE):
@@ -312,7 +326,7 @@ class Coordinator():
     #########################################################################################################
     def sendStartCmd(self):
         self.start_time = time.time()
-        outrow = [self.start_time, 'STARTTEST', 'None', 'None']
+        outrow = [self.start_time, 'STARTTEST', {}]
         self.addToOut(outrow)
 
         for hn, node in self.nodes.iteritems():
