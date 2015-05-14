@@ -84,10 +84,15 @@ def simpleTest(topk, epsilon, bandwidth, nodes, nodeport, masterport, testname, 
     topo = SingleSwitchTopo(nodes)
     net = Mininet(topo)
     net.start()
-   
-    outputloc = 'results/%s/ep_%s' % (outputname, epsilon)
-    if not os.path.exists(outputloc):
-        os.makedirs(outputloc)
+  
+    if (bandwidth == 0): 
+        outputloc = 'results/%s/ep_%s' % (outputname, epsilon)
+        if not os.path.exists(outputloc):
+            os.makedirs(outputloc)
+    else:
+        outputloc = 'results/%s/band_%s' % (outputname, bandwidth)
+        if not os.path.exists(outputloc):
+            os.makedirs(outputloc)
  
     ips = saveNodesToFile(net, nodes)
 

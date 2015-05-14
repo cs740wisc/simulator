@@ -39,7 +39,8 @@ class Coordinator():
 
         # VARIABLE EPSILON CHANGES
         self.targetBandwidth = float(bandwidth)
-        self.alpha = 0.8
+        # What percentage of bandwidth estimation comes from the new version
+        self.alpha = 0.7
         self.estBandwidth = float(bandwidth)
         self.timeBetweenAdjusts = 10.0
         if (bandwidth == 0):
@@ -54,6 +55,7 @@ class Coordinator():
 
 
         self.running = True
+
         
         self.results_path = '%s/c0.csv' % outputname
         # Load the duration of the test so we can capture data for the right amount of time
@@ -112,10 +114,9 @@ class Coordinator():
                 # TODO - react more quickly by factoring in difference between old est and new est
                 out.info("oldEstBandwidth: %s.\n" % self.estBandwidth)
                 diff_time = currtime - self.prev_band_time
-                new_band = totalBytes / diff_time
-                out.info("instBandwidth: %s.\n" % new_band)
-                diff_band = new_band - self.estBandwidth
-                self.estBandwidth += diff_band * self.alpha
+                inst_band = totalBytes / diff_time
+                out.info("instBandwidth: %s.\n" % inst_band)
+                self.estBandwidth = ((1 - self.alpha) * self.estBandwidth) + (self.alpha * inst_band)
                 out.info("newEstBandwidth: %s.\n" % self.estBandwidth)
 
                 self.epsilonLock.acquire()
@@ -124,14 +125,28 @@ class Coordinator():
                 if (self.estBandwidth > self.targetBandwidth):
                     # We need to cut down on bandwidth, target will be less than est
                     # So want to make epsilon bigger
-                    self.epsilon *= self.estBandwidth/self.targetBandwidth
+                    if (self.epsilon <= 0.5):
+                        self.epsilon = 0.5 * self.estBandwidth/self.targetBandwidth
+                    else:
+                        self.epsilon *= self.estBandwidth/self.targetBandwidth
                 else:
                     # We can add bandwidth and make more accurate
                     # So want to make epsilon smaller
                     if (self.epsilon >= 0.5):                    
                         self.epsilon *=  self.estBandwidth/self.targetBandwidth
+                    else:
+                        # Go to 0 
+                        self.epsilon = 0.0
 
                 self.epsilonLock.release()      
+                
+                # If the total bytes are 0, perform a resolution to update the top-k so we can get more accurate results
+                # TODO switch to check if old epsilon was also 0
+                if (totalBytes == 0 and self.epsilon != 0.0):
+                    self.resolveLock.acquire()
+                    self.performReallocation(res=self.topk, host=None, topkObjects=self.topk) 
+                    self.resolveLock.release()
+
                 out.info("epsilon: %s.\n" % self.epsilon)
  
             self.prev_band_time = currtime 
