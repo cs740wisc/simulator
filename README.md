@@ -45,7 +45,6 @@ screen -r controller
 or 
 
 ```xterm h1```,
-`:w
 
 ```
 screen -r h1
