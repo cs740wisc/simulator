@@ -229,7 +229,7 @@ def setupArgParse():
     p = argparse.ArgumentParser(description='Graphing Bandwidth vs time for various epsilons/bandwidths')
     p.add_argument('-t', '--test_dir', help='Directory of test to graph', type=str, default="none")
     p.add_argument('-a', '--average', help='Running Average to Use', type=int, default=5)
-    p.add_argument('-s', '--scale', help='Scaling factor to fix the times being too short for dist graph.', type=float, default=1.1)
+    p.add_argument('-s', '--scale', help='Scaling factor to fix the times being too short for dist graph.', type=float, default=1.06)
     return p
 
 if __name__ == '__main__':
