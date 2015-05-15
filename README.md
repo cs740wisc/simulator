@@ -37,7 +37,6 @@ VIEWING
 To view the experiment as it is proceeding, open up xterm in the experiment terminal, and go to the appropriate screen:
 
 ```xterm c0```,
-
 ```
 screen -r controller
 ```
@@ -45,7 +44,6 @@ screen -r controller
 or 
 
 ```xterm h1```,
-
 ```
 screen -r h1
 ```
