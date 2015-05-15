@@ -10,15 +10,51 @@ import csv
 from collections import deque
 
 
+def genData(self):
+    if (self.gen):
+        nextIter = threading.Timer(1.0/self.perSecond, self.genData)
+        nextIter.start()
+        sendData = {}
+        for i, d in enumerate(self.data[self.dataIndex]):
+            # PWM to send data for each item
+            if (d > 0):
+                sendData[chr(i+97)]=d
+
+        self.addRequest(sendData)
+
+        self.dataTicks += 1
+
+        # We must move on the next distribution specified in the file
+        if (self.dataTicks >= self.nextDistTicks):
+            self.dataIndex += 1
+            if (self.dataIndex >= len(self.durations)):
+                # Exit if there are no durations left specified
+                #out.warn("No more distributions, exiting.\n")
+                msg = {'msgType': settings.MSG_TEST_COMPLETE, 'hn': self.hn}
+                comm.send_msg(self.master_address, msg)
+
+                self.stopGen()
+                nextIter.cancel()
+            else:
+                # Otherwise calculate the next time we must switch
+                self.nextDistTicks = self.dataTicks + self.durations[self.dataIndex] * self.perSecond
+                currtime = time.time()
+                outrow = [currtime, 'switchgens', self.hn, 'None']
+                f = open(self.output_name, 'ab+')
+                writer = csv.writer(f)
+                writer.writerow(outrow)
+                f.close()
+
+                out.err("Switching to the next distribution.\n")
+
 
 def toInt(tup):
     key, val = tup
     return int(key.split('_')[-1]), val
 
-def plotSingleTest(ax_band, ax_ep, legend_str, data, scalarMap, color_index, running_avg_secs):
+def plotSingleTest(legend_str, data, scalarMap, color_index, running_avg_secs):
     times = []
     totalCost = []
-    epsilons = []
     windowBytes = 0.0
     starttime = 0.0
     window = deque()
@@ -31,13 +67,11 @@ def plotSingleTest(ax_band, ax_ep, legend_str, data, scalarMap, color_index, run
     runtime = stoptime - starttime
 
     i = 1
-    curr_epsilon = 0
     currtime = 0.5
     while (currtime <= runtime):
         # add all data values which are greater than next step 
         while i<len(data):
             (time, send_rcv, host, msgType, numBytes, epsilon) = data[i]
-            curr_epsilon = float(epsilon)
             nexttime = float(time)
             if (send_rcv == 'STARTTEST' or send_rcv == 'STOPTEST' or send_rcv == 'startGen' or msgType == 'testComplete'):
                 i += 1
@@ -64,21 +98,19 @@ def plotSingleTest(ax_band, ax_ep, legend_str, data, scalarMap, color_index, run
 
         times.append(currtime)
         totalCost.append(curr_band) 
-        epsilons.append(curr_epsilon)
- 
+         
         currtime += 1.0
 
         if (currtime + 20.0 > runtime):
             break  
 
     colorVal = scalarMap.to_rgba(color_index)
-    ax_band.plot(times, totalCost, '.-', color=colorVal, label=legend_str)
-    ax_ep.plot(times, epsilons, '.-', color=colorVal, label=legend_str)
+    plt.plot(times, totalCost, '.-', color=colorVal, label=legend_str)
     
 
 def graph(epsilon_data, band_data, running_average_time):
 
-    f, (ax_band, ax_ep) = plt.subplots(2, sharex=True)    
+    
     
     ########################################################################
     # Graph the varying bandwidths
@@ -93,7 +125,8 @@ def graph(epsilon_data, band_data, running_average_time):
     
     for ep, data in sorted_epsilon:
         legend_str = 'ep=%s' % int(ep)
-        plotSingleTest(ax_band, ax_ep, legend_str, data, scalarMap_epsilon, index, running_average_time)
+         
+        plotSingleTest(legend_str, data, scalarMap_epsilon, index, running_average_time)
         index += 1
 
     ########################################################################
@@ -108,15 +141,15 @@ def graph(epsilon_data, band_data, running_average_time):
     
     for band, data in sorted_band:
         legend_str = 'band=%s' % int(band)
-        plotSingleTest(ax_band, ax_ep, legend_str, data, scalarMap_band, index, running_average_time)
+        plotSingleTest(legend_str, data, scalarMap_band, index, running_average_time)
         index += 1
 
-    ax_band.set_title('Average Bandwidth vs Time')
-    ax_band.legend(loc=2)
-    ax_band.set_ylabel("Bandwidth (bytes/s)")
-    ax_ep.set_xlabel("Time (s)") 
-    ax_ep.set_ylabel("Epsilon")
-    ax_ep.set_title('Epsilon vs Time')
+
+    plt.title('Average Bandwidth vs Time')
+    plt.legend(loc=2)
+    
+    plt.xlabel("Time") 
+    plt.ylabel("Total Cost")
     plt.show()
     #plt.savefig('../report/images/train/err_comps/%s.png' % tests[i], dpi=300)
     #plt.close()
@@ -124,15 +157,31 @@ def graph(epsilon_data, band_data, running_average_time):
 
 def setupArgParse():
     p = argparse.ArgumentParser(description='Graphing Bandwidth vs time for various epsilons/bandwidths')
-    p.add_argument('-t', '--test_dir', help='Directory of test to graph', type=str, default="none")
-    p.add_argument('-a', '--average', help='Running Average to Use', type=int, default=5)
+    p.add_argument('-g', '--gendata', help='The file to output', type=str, default="none")
     return p
 
 if __name__ == '__main__':
-    import glob
+    import glob, json
     
     p = setupArgParse()
     args = p.parse_args()
+
+
+    # Load the data
+    testSpec = json.load(open('genData/%s.txt' % args.gendata, 'r'))
+    nodeDistribution = testSpec[self.hn]
+    out.info("nodeDistribution: %s\n" % nodeDistribution)
+
+
+    
+    self.data = [[0 for col in range(25)] for row in range(len(self.nodeDistribution))]
+    # Assume 10 seconds if not mentioned
+    self.durations = [10 for row in range(len(self.nodeDistribution))]
+    for i, d in enumerate(self.nodeDistribution):
+        for key, val in d['freqs'].iteritems():
+            self.data[i][ord(key)-ord('a')] = val
+        self.durations[i] = d.get('duration', 10)
+
 
     # Dictionary indexed by epsilon
     epsilon_data = {}

@@ -16,7 +16,7 @@ class Coordinator():
 
     """
 
-    def __init__(self, k, epsilon, bandwidth, nodeport, testname, outputname):
+    def __init__(self, k, epsilon, bandwidth, nodeport, outputname):
         """ Receives number of nodes.
             Looks up based on hostname to find all ip addresses
             Stores hostname 
@@ -58,12 +58,8 @@ class Coordinator():
 
         
         self.results_path = '%s/c0.csv' % outputname
-        # Load the duration of the test so we can capture data for the right amount of time
-        testSpec = yaml.load(open('genData/%s.txt' % testname, 'r'))
-        self.duration = testSpec['c0']['duration'] + 2*settings.MON_ROLLING_WINDOW_TIME
-        #outinfo('duration: %s\n' % self.duration)
+        
         self.start_time = 0
-    
         self.output_list = []
 
 
@@ -120,6 +116,7 @@ class Coordinator():
                 out.info("newEstBandwidth: %s.\n" % self.estBandwidth)
 
                 self.epsilonLock.acquire()
+                old_epsilon = self.epsilon
                 # Increase or decrease epsilon multiplicatively so we try to adjust bandwidth
                 # First try: adjust by the percent difference from ideal
                 if (self.estBandwidth > self.targetBandwidth):
@@ -142,7 +139,7 @@ class Coordinator():
                 
                 # If the total bytes are 0, perform a resolution to update the top-k so we can get more accurate results
                 # TODO switch to check if old epsilon was also 0
-                if (totalBytes == 0 and self.epsilon != 0.0):
+                if (totalBytes == 0 and self.epsilon != old_epsilon):
                     self.resolveLock.acquire()
                     self.performReallocation(res=self.topk, host=None, topkObjects=self.topk) 
                     self.resolveLock.release()
@@ -173,10 +170,11 @@ class Coordinator():
                 currtime = r[0]
                 send_rcv = r[1]
                 msg = r[2]
+                epsilon = r[3]
                 hn = msg.get("hn", "None")
                 msgType = msg.get("msgType", "None")
                 size = sys.getsizeof(json2str(msg))
-                formattedRows.append([currtime, send_rcv, hn, msgType, size])
+                formattedRows.append([currtime, send_rcv, hn, msgType, size, epsilon])
 
 
             #out.info("Outputting to file.\n")
@@ -200,7 +198,7 @@ class Coordinator():
                 # We should have completed everything, so output a final row to the file and exit
                 ##########################################
                 #outwarn("Reached duration, exiting.\n")
-                outrow = [currtime, 'STOPTEST', "None", "None", "None"]
+                outrow = [currtime, 'STOPTEST', "None", "None", "None", "None"]
                 f = open(self.results_path, 'ab+')
                 writer = csv.writer(f)
                 writer.writerow(outrow)            
@@ -246,7 +244,7 @@ class Coordinator():
     def send_msg(self, addr, msg):
         currtime = time.time()
         #out.warn("msg: %s\n" % msg)
-        outrow = [currtime, 'send', msg]
+        outrow = [currtime, 'send', msg, self.epsilon]
     
         self.addToOut(outrow)
         self.addToBand(msg)
@@ -402,7 +400,7 @@ class Coordinator():
         hn = msg['hn']
 
         currtime = time.time()
-        outrow = [currtime, 'recv', msg]
+        outrow = [currtime, 'recv', msg, self.epsilon]
         self.addToOut(outrow)
         self.addToBand(msg)
 
@@ -422,7 +420,7 @@ class Coordinator():
     #########################################################################################################
     def sendStartCmd(self):
         self.start_time = time.time()
-        outrow = [self.start_time, 'STARTTEST', {}]
+        outrow = [self.start_time, 'STARTTEST', {}, self.epsilon]
         self.addToOut(outrow)
 
         for hn, node in self.nodes.iteritems():

@@ -61,7 +61,7 @@ def startScreens(net, numnodes, ips, nodeport, masterport, topk, epsilon, bandwi
     cstr = 'c0'
     c = net.get(cstr)
     # Start the coordinator machine
-    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --epsilon %s --bandwidth %s --nodeport %s --testname %s --outputname %s' % (masterport, ips['coords']['c0']['ip'], topk, epsilon, bandwidth, nodeport, testname, outputname)
+    runCmd = 'screen -h 2000 -dmS controller python /home/mininet/simulator/coord.py --masterport %s --masterip %s --topk %s --epsilon %s --bandwidth %s --nodeport %s --outputname %s' % (masterport, ips['coords']['c0']['ip'], topk, epsilon, bandwidth, nodeport, outputname)
     print(runCmd)
     c.cmd(runCmd)
 
